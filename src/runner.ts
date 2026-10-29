@@ -361,8 +361,14 @@ export async function runTest(config: ProjectConfig, options: RunOptions): Promi
     }
     
     const hosts = [...new Set(config.endpoints.map((e) => new URL(e.url).host))];
+    // K6-003 FIX: Add random suffix to report ID to prevent collisions
+    // when multiple tests start within the same millisecond
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const randomSuffix = Math.random().toString(36).slice(2, 8).padEnd(6, "0");
+    const reportId = `${timestamp}-${randomSuffix}`;
+    
     const report = reportFromSummary(summary as Parameters<typeof reportFromSummary>[0], {
-      id: new Date().toISOString().replace(/[:.]/g, "-"),
+      id: reportId,
       createdAt: new Date().toISOString(),
       profile: options.profile,
       targetHosts: hosts,

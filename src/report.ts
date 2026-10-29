@@ -169,7 +169,29 @@ export function reportFromSummary(summary: K6Summary, meta: Omit<RunReportV2, "s
 export async function saveReport(report: RunReport, outputPath?: string): Promise<string> {
   const dir = resolve(".k6boost", "reports");
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  const file = resolve(outputPath ?? `${dir}/${report.id}.json`);
+  
+  let file: string;
+  if (outputPath) {
+    // K6-001 FIX: Validate that outputPath is safe
+    // Do not allow absolute paths or path traversal
+    if (outputPath.startsWith("/") || outputPath.startsWith("\\") || outputPath.includes("..")) {
+      throw new Error("Output path must be relative and cannot contain '..' or start with a directory separator.");
+    }
+    
+    // Resolve relative to current directory
+    const resolved = resolve(outputPath);
+    const cwd = process.cwd();
+    
+    // Ensure the resolved path is within the current working directory
+    if (!resolved.startsWith(cwd + "/") && resolved !== cwd) {
+      throw new Error("Output path must be within the current working directory.");
+    }
+    
+    file = resolved;
+  } else {
+    file = resolve(dir, `${report.id}.json`);
+  }
+  
   await mkdir(dirname(file), { recursive: true, mode: 0o700 });
   await writeFile(file, `${JSON.stringify(report, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   return file;

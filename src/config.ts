@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, rename } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 
@@ -119,5 +119,13 @@ export async function loadConfig(file = CONFIG_FILE): Promise<ProjectConfig> {
 
 export async function saveConfig(config: ProjectConfig, file = CONFIG_FILE): Promise<void> {
   const validated = ProjectConfigSchema.parse(config);
-  await writeFile(resolve(file), `${JSON.stringify(validated, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  const resolvedPath = resolve(file);
+  const tempFile = `${resolvedPath}.tmp`;
+  
+  // K6-005 FIX: Write to temporary file first for atomic updates
+  // If the process crashes mid-write, the original file remains intact
+  await writeFile(tempFile, `${JSON.stringify(validated, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  
+  // Atomic rename - if crash happens here, temp file is left but original is safe
+  await rename(tempFile, resolvedPath);
 }
