@@ -6,11 +6,13 @@ const PRIVATE_IPV4 = [
 ];
 
 export function isLocalHostname(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  return host === "localhost" || host.endsWith(".localhost") || host === "::1" ||
-    host === "0.0.0.0" || PRIVATE_IPV4.some((pattern) => pattern.test(host));
+  const host = hostname.toLowerCase().replace(/^\\[|\\]$/g, "");
+  const ipv4Mapped = host.startsWith("::ffff:") ? host.slice("::ffff:".length) : host;
+  return host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") ||
+    host.endsWith(".internal") || host === "::1" || host === "0.0.0.0" ||
+    host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:") ||
+    PRIVATE_IPV4.some((pattern) => pattern.test(ipv4Mapped));
 }
-
 export function validateTargets(endpoints: Endpoint[], allowRemote: boolean, allowLocal: boolean): void {
   for (const endpoint of endpoints) {
     const url = new URL(endpoint.url);
