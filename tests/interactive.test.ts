@@ -81,4 +81,27 @@ describe("Interactive modules", () => {
       expect(config.thresholds.failedRate).toBe(0.01);
     });
   });
+
+  describe("Metrics formatter module", () => {
+    it("should export formatting functions", async () => {
+      const module = await import("../src/interactive/metrics-formatter.js");
+      expect(module.formatNumber).toBeDefined();
+      expect(module.formatLatency).toBeDefined();
+      expect(module.formatPercentage).toBeDefined();
+      expect(module.formatRPS).toBeDefined();
+      expect(module.parseDurationToMs).toBeDefined();
+      expect(module.buildMetricsRows).toBeDefined();
+      expect(module.displayMetricsTable).toBeDefined();
+      expect(module.isColorSupported).toBeDefined();
+    });
+
+    it("should format metrics correctly for display", async () => {
+      const module = await import("../src/interactive/metrics-formatter.js");
+      
+      expect(module.formatNumber(1234)).toBe("1,234");
+      expect(module.formatLatency(100.5)).toContain("ms");
+      expect(module.formatPercentage(0.05)).toContain("%");
+      expect(module.formatRPS(1000, 10000)).toContain("req/s");
+    });
+  });
 });

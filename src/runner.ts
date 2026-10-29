@@ -125,17 +125,6 @@ export async function runTest(config: ProjectConfig, options: RunOptions): Promi
     });
     const path = await saveReport(report, options.output);
     console.log(`\nReport saved: ${path}`);
-    
-    // Enhanced output with status distribution
-    let statusOutput = "";
-    if (report.metrics.httpStatusDistribution && Object.keys(report.metrics.httpStatusDistribution).length > 0) {
-      statusOutput = "\nHTTP Status Distribution:\n";
-      for (const [status, count] of Object.entries(report.metrics.httpStatusDistribution).sort((a, b) => Number(a[0]) - Number(b[0]))) {
-        statusOutput += `  ${status}: ${count}\n`;
-      }
-    }
-    
-    console.log(`Requests: ${report.metrics.requestCount} | p95: ${report.metrics.p95Ms ?? "n/a"} ms | failed: ${(report.metrics.failedRate * 100).toFixed(2)}%${statusOutput ? "\n" + statusOutput : ""}`);
     if (code !== 0 || !report.thresholdsPassed) throw new Error("Performance test failed. Review k6 output and the saved report.");
     return { report, path };
   } finally {

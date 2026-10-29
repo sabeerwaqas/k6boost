@@ -10,6 +10,7 @@ import {
   displayWarning,
 } from "./banner.js";
 import type { RunReport } from "../report.js";
+import { displayMetricsTable } from "./metrics-formatter.js";
 
 export async function interactiveTestWorkflow(
   config: ProjectConfig
@@ -149,62 +150,5 @@ interface TestResult {
 
 function displayTestResults(report: RunReport): void {
   displayHeader("Test Results");
-
-  const status = report.thresholdsPassed ? "✓ PASS" : "✗ FAIL";
-  console.log(`\n  Overall Status: ${status}`);
-
-  console.log(`\n  Requests:       ${report.metrics.requestCount}`);
-  console.log(
-    `  Avg Response:   ${report.metrics.avgMs?.toFixed(2) ?? "N/A"} ms`
-  );
-  console.log(
-    `  p95 Response:   ${report.metrics.p95Ms?.toFixed(2) ?? "N/A"} ms`
-  );
-  console.log(
-    `  Failed Rate:    ${(report.metrics.failedRate * 100).toFixed(2)}%`
-  );
-
-  // HTTP Status Distribution
-  if (
-    report.metrics.httpStatusDistribution &&
-    Object.keys(report.metrics.httpStatusDistribution).length > 0
-  ) {
-    console.log(`\n  HTTP Status Distribution:`);
-    const sorted = Object.entries(report.metrics.httpStatusDistribution)
-      .sort((a, b) => Number(a[0]) - Number(b[0]))
-      .map(([status, count]) => {
-        let label = "Unknown";
-        const code = Number(status);
-        if (code >= 200 && code < 300) label = "Success";
-        else if (code >= 300 && code < 400) label = "Redirect";
-        else if (code >= 400 && code < 500) label = "Client Error";
-        else if (code >= 500 && code < 600) label = "Server Error";
-        return { status, count, label };
-      });
-
-    for (const { status, count, label } of sorted) {
-      console.log(`    ${status}  ${label}: ${count}`);
-    }
-  }
-
-  // Thresholds
-  console.log(`\n  Threshold Results:`);
-  console.log(
-    `    p95 (< ${report.thresholds.p95Ms}ms):     ${
-      (report.metrics.p95Ms ?? 0) <= report.thresholds.p95Ms
-        ? "✓ PASS"
-        : "✗ FAIL"
-    }`
-  );
-  console.log(
-    `    Failed (< ${(report.thresholds.failedRate * 100).toFixed(1)}%): ${
-      report.metrics.failedRate <= report.thresholds.failedRate
-        ? "✓ PASS"
-        : "✗ FAIL"
-    }`
-  );
-
-  console.log(
-    `\n  Report saved: ${report.id}.json (.k6boost/reports/)`
-  );
+  displayMetricsTable(report);
 }
