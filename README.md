@@ -113,6 +113,62 @@ cat .k6boost/reports/*.json | jq .
 
 ---
 
+## 🎯 Interactive Mode (Beginner-Friendly)
+
+For a guided, interactive experience, run k6boost with no arguments in a terminal:
+
+```bash
+k6boost
+```
+
+This launches a beautiful interactive menu where you can:
+
+1. **Create endpoints** through a step-by-step wizard
+   - Specify endpoint name and URL
+   - Choose HTTP method with descriptions
+   - Add custom headers easily
+   - Configure authentication (Bearer, API Key, Basic Auth)
+   - Add request bodies with JSON validation
+   - Review before saving
+
+2. **Run performance tests** with interactive prompts
+   - See configured endpoints
+   - Choose smoke or load test profile
+   - Review workload parameters before execution
+   - Get colored, human-readable test results
+
+3. **View and manage endpoints**
+   - List all saved endpoints
+   - View endpoint details
+   - Delete endpoints with confirmation
+
+4. **Settings** for advanced configuration
+
+The interactive mode detects whether you're in a terminal and intelligently falls back to command-line mode if stdin/stdout is piped (useful for CI/CD automation).
+
+### Interactive Workflow Example
+
+```bash
+$ k6boost
+
+┌─────────────────────────────────────────┐
+│  k6boost                                │
+│  API performance testing, made simple.  │
+└─────────────────────────────────────────┘
+
+? What would you like to do?
+➕  Add a new endpoint
+🚀  Run a performance test
+👁️   View saved endpoints
+📊  Compare test reports
+⚙️   Settings
+🚪  Exit
+
+# Select "Add a new endpoint" and follow the prompts
+```
+
+---
+
 ## 📚 Commands Reference
 
 ### `k6boost init`
@@ -586,6 +642,46 @@ npm run build && npm test
 - No Docker runner yet
 - Baseline comparison is summary-based, not statistically rigorous
 - Requires separate Grafana k6 installation
+
+---
+
+## 🤖 Automation & CI/CD
+
+The command-line interface remains fully functional for automation, CI/CD pipelines, and scripting. The interactive mode is automatically disabled when stdin/stdout is not a TTY.
+
+### CI/CD Example
+
+```bash
+#!/bin/bash
+# ci-test.sh: Performance test in CI/CD pipeline
+
+export API_TOKEN="$CI_API_TOKEN"
+
+k6boost init
+k6boost add-endpoint health \
+  --url https://api.staging.example.com/health \
+  --method GET
+
+# Run smoke test (1 user, 10 seconds)
+k6boost test --profile smoke --allow-remote || exit 1
+
+echo "✓ Performance test passed"
+```
+
+### Run in CI/CD
+
+```yaml
+# GitHub Actions example
+- name: Run performance tests
+  env:
+    API_TOKEN: ${{ secrets.API_TOKEN }}
+  run: |
+    npm install -g k6boost
+    cd tests
+    k6boost init
+    k6boost add-endpoint api --url https://api.example.com --method GET
+    k6boost test --profile smoke --allow-remote
+```
 
 ---
 
