@@ -8,6 +8,36 @@ export interface MetricsTableRow {
 }
 
 /**
+ * Unicode box drawing characters for table borders
+ */
+const BOX = {
+  TL: "┌",
+  TR: "┐",
+  BL: "└",
+  BR: "┘",
+  H: "─",
+  V: "│",
+  ML: "├",
+  MR: "┤",
+  MM: "┼",
+  T: "┬",
+  B: "┴",
+};
+
+/**
+ * Color palette for enhanced UI
+ */
+const COLORS = {
+  primary: chalk.cyan,
+  success: chalk.green,
+  error: chalk.red,
+  warning: chalk.yellow,
+  muted: chalk.gray,
+  header: chalk.bold.cyan,
+  border: chalk.gray,
+};
+
+/**
  * Format a number with thousands separators (e.g., 1234 -> "1,234")
  */
 export function formatNumber(value: number | null | undefined): string {
@@ -61,24 +91,22 @@ export function parseDurationToMs(duration: string): number {
 }
 
 /**
- * Determine the status color/indicator for a metric
+ * Get visible length of string (accounting for ANSI escape codes)
  */
-function getStatusIndicator(status?: "pass" | "fail" | "info" | "warning"): string {
-  const useColor = isColorSupported();
-  if (!useColor) {
-    return "";
-  }
-  switch (status) {
-    case "pass":
-      return chalk.green("✓");
-    case "fail":
-      return chalk.red("✗");
-    case "warning":
-      return chalk.yellow("⚠");
-    case "info":
-    default:
-      return "";
-  }
+function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\u001b\[[0-9;]*m/g, "");
+}
+
+/**
+ * Pad a potentially colored string to a fixed width
+ */
+function colorSafePad(str: string, width: number, direction: "start" | "end" = "end"): string {
+  const visibleLength = stripAnsi(str).length;
+  const paddingNeeded = Math.max(0, width - visibleLength);
+  const padding = " ".repeat(paddingNeeded);
+  
+  return direction === "end" ? str + padding : padding + str;
 }
 
 /**
@@ -90,38 +118,78 @@ export function isColorSupported(): boolean {
 }
 
 /**
- * Format a single row with optional color
+ * Format a single row with optional color and enhanced styling
  */
-function formatRow(metric: string, value: string, status?: "pass" | "fail" | "info" | "warning"): string {
+function formatRow(metric: string, value: string, status?: "pass" | "fail" | "info" | "warning", isHeader: boolean = false): string {
   const useColor = isColorSupported();
-  const indicator = getStatusIndicator(status);
   
-  // Align columns: metric (30 chars) | value (right-aligned, 20 chars) | status
-  const paddedMetric = metric.padEnd(30);
-  const paddedValue = value.padStart(20);
-  
-  let row = `${paddedMetric} ${paddedValue}`;
-  if (indicator) {
-    row += `  ${indicator}`;
+  if (!useColor) {
+    // Plain text fallback
+    const paddedMetric = metric.padEnd(35);
+    const paddedValue = value.padStart(25);
+    return `${paddedMetric} ${paddedValue}`;
   }
   
-  if (useColor) {
-    // Apply status color to the value column
-    let coloredValue = paddedValue;
-    if (status === "pass") {
-      coloredValue = chalk.green(paddedValue);
-    } else if (status === "fail") {
-      coloredValue = chalk.red(paddedValue);
-    } else if (status === "warning") {
-      coloredValue = chalk.yellow(paddedValue);
-    }
-    row = `${paddedMetric} ${coloredValue}`;
-    if (indicator) {
-      row += `  ${indicator}`;
-    }
+  // Get status color
+  let statusColor = chalk.white;
+  let indicator = "";
+  
+  if (status === "pass") {
+    statusColor = chalk.green;
+    indicator = " ✓";
+  } else if (status === "fail") {
+    statusColor = chalk.red;
+    indicator = " ✗";
+  } else if (status === "warning") {
+    statusColor = chalk.yellow;
+    indicator = " ⚠";
+  } else if (status === "info") {
+    statusColor = chalk.blue;
   }
   
-  return row;
+  // Format header rows differently
+  if (isHeader) {
+    const paddedMetric = colorSafePad(chalk.bold(metric), 35);
+    const paddedValue = colorSafePad(chalk.bold(value), 25, "start");
+    return `${BOX.V} ${paddedMetric} ${BOX.V} ${paddedValue} ${BOX.V}`;
+  }
+  
+  // Format section headers (with no value)
+  if (metric !== "" && value === "") {
+    const styled = chalk.bold.cyan(metric);
+    const paddedLabel = colorSafePad(styled, 35);
+    return `${BOX.V} ${paddedLabel} ${BOX.V} ${"".padEnd(25)} ${BOX.V}`;
+  }
+  
+  // Format regular rows
+  const paddedMetric = metric.padEnd(35);
+  const coloredValue = statusColor(value);
+  const paddedValue = colorSafePad(coloredValue, 25, "start");
+  
+  return `${BOX.V} ${paddedMetric} ${BOX.V} ${paddedValue}${indicator} ${BOX.V}`;
+}
+
+/**
+ * Create a horizontal line for table borders
+ */
+function createTableLine(type: "top" | "middle" | "bottom"): string {
+  const useColor = isColorSupported();
+  
+  if (!useColor) {
+    return "-".repeat(70);
+  }
+  
+  let line = "";
+  
+  if (type === "top") {
+    line = BOX.TL + BOX.H.repeat(37) + BOX.T + BOX.H.repeat(27) + BOX.TR;
+  } else if (type === "middle") {
+    line = BOX.ML + BOX.H.repeat(37) + BOX.MM + BOX.H.repeat(27) + BOX.MR;
+  } else if (type === "bottom") {
+    line = BOX.BL + BOX.H.repeat(37) + BOX.B + BOX.H.repeat(27) + BOX.BR;
+  }
+  
+  return COLORS.border(line);
 }
 
 /**
@@ -299,7 +367,7 @@ export function buildMetricsRows(report: RunReport): MetricsTableRow[] {
 }
 
 /**
- * Display metrics table to console
+ * Display metrics table with enhanced UI
  */
 export function displayMetricsTable(report: RunReport): void {
   const rows = buildMetricsRows(report);
@@ -307,16 +375,47 @@ export function displayMetricsTable(report: RunReport): void {
   
   console.log();
   
-  for (const row of rows) {
+  // Top border
+  console.log(createTableLine("top"));
+  
+  // Header
+  console.log(formatRow("Metric", "Value", undefined, true));
+  console.log(createTableLine("middle"));
+  
+  // Overall status (always first, highlighted)
+  const overallRow = rows[0]!;
+  console.log(formatRow(overallRow.metric, overallRow.value, overallRow.status));
+  console.log(createTableLine("middle"));
+  
+  // Rest of the rows
+  let rowIndex = 2; // Skip overall status and blank row
+  let lastWasSectionHeader = false;
+  
+  while (rowIndex < rows.length) {
+    const row = rows[rowIndex]!;
+    rowIndex++;
+    
+    // Skip blank rows
     if (row.metric === "" && row.value === "") {
-      console.log();
+      if (rowIndex < rows.length) {
+        console.log(createTableLine("middle"));
+      }
       continue;
     }
     
-    const line = formatRow(row.metric, row.value, row.status);
-    console.log(line);
+    const isSectionHeader = row.metric !== "" && row.value === "";
+    
+    // Add spacing before section headers
+    if (isSectionHeader && lastWasSectionHeader === false) {
+      console.log(createTableLine("middle"));
+    }
+    
+    console.log(formatRow(row.metric, row.value, row.status));
+    lastWasSectionHeader = isSectionHeader;
   }
+  
+  // Bottom border
+  console.log(createTableLine("bottom"));
   
   console.log();
 }
-
