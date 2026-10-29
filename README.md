@@ -25,26 +25,88 @@ npm link
 
 ## Quick Start
 
-Initialize a new k6boost project:
+### Interactive Mode (Recommended for beginners)
+
+Simply run k6boost with no arguments to launch the interactive menu:
+
 ```bash
 mkdir my-api-tests && cd my-api-tests
 k6boost
 ```
 
-This launches the interactive menu. You can also use commands:
+You'll see a friendly menu:
+
+```
+ _  _ __     _ _        _
+| |/ /|  |   | | |      | |
+| ' / |  |__ | | | ___  | |__  ___  ___ _ __ 
+| . \ |  '_ \| | |/ _ \ | '_ \/ _ \/ _ \ '_ \
+| |\ \| |_) | | | (_) || |_) | (_) | (_) | | |
+|_| \_\____/|_|_|\___/ |_.__/ \___/\___/|_| |_|
+
+API performance testing, made simple.
+
+→ Main Menu
+
+? What would you like to do?
+  ➕  Add a new endpoint
+  🚀  Run a performance test
+  👁️   View saved endpoints
+  📊  Compare test reports
+  ⚙️   Settings
+  🚪  Exit
+```
+
+**Step 1: Add an endpoint**
+- Select "Add a new endpoint"
+- Enter endpoint name, URL, HTTP method
+- Optionally add headers or request body
+- k6boost saves to `k6boost.json`
+
+**Step 2: Run a test**
+- Select "Run a performance test"
+- Choose a profile (Smoke, Load, Stress, Spike, Soak, or Breakpoint)
+- k6boost runs the test and displays results:
+
+```
+----------------------------------------------------------------------
+Overall Status                                           PASS
+----------------------------------------------------------------------
+Test Information
+  Profile                                               SMOKE
+  Target(s)                                       example.com
+  Virtual Users                                             1
+  Duration                                                10s
+----------------------------------------------------------------------
+Request Metrics
+  Total Requests                                          100
+  Requests/sec                                    10.00 req/s
+----------------------------------------------------------------------
+Response Time (ms)
+  Average                                            50.50 ms
+  p95                                                95.50 ms
+----------------------------------------------------------------------
+Failures
+  HTTP Request Failures                      0 failed (0.00%)
+----------------------------------------------------------------------
+```
+
+### Command-Line Mode (for scripting/CI)
+
+Prefer command-line? Use explicit commands:
 
 ```bash
-# Add an endpoint to test
+# Add an endpoint
 k6boost add-endpoint health --url https://httpbin.org/status/200 --method GET
 
-# Run a smoke test (1 VU, 10 seconds)
+# Run a smoke test
 k6boost test --profile smoke --allow-remote
 
-# View the report
+# View the JSON report
 cat .k6boost/reports/*.json | jq .
 ```
 
-After the test completes, results are saved to `.k6boost/reports/{timestamp}.json`.
+Results are automatically saved to `.k6boost/reports/{timestamp}.json`.
 
 ## Features
 
