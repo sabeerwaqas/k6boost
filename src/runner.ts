@@ -35,7 +35,7 @@ export default function () {
     const response = http.request(endpoint.method, endpoint.url, endpoint.body ?? null, {
       headers: endpoint.headers,
       tags: { endpoint: endpoint.name, method: endpoint.method },
-      timeout: "30s"
+      timeout: "30s",\n      redirects: 0
     });
     check(response, { [endpoint.name + " responds"]: (r) => r.status >= 200 && r.status < 400 });
   }
