@@ -64,7 +64,10 @@ export async function runTest(config: ProjectConfig, options: RunOptions): Promi
   const vus = options.vus ?? defaults.vus;
   const duration = options.duration ?? defaults.duration;
   if (!Number.isInteger(vus) || vus < 1 || vus > 50) throw new Error("VUs must be an integer between 1 and 50.");
-  if (!/^([1-9]\d*(ms|s|m|h))$/.test(duration)) throw new Error("Duration must be a positive value with ms, s, m, or h units (for example 10s or 1m).");
+  const durationMatch = /^([1-9]\d*)(ms|s|m|h)$/.exec(duration);
+  const unit = durationMatch?.[2] as "ms" | "s" | "m" | "h" | undefined;
+  const durationMs = durationMatch ? Number(durationMatch[1]) * ({ ms: 1, s: 1000, m: 60_000, h: 3_600_000 }[unit!]) : Number.POSITIVE_INFINITY;
+  if (!Number.isSafeInteger(durationMs) || durationMs > 600_000) throw new Error("Duration must be positive and no longer than 10 minutes (for example 10s or 1m).");
   if (options.profile === "smoke" && vus > 1) throw new Error("Smoke profile is limited to 1 VU.");
   if (options.profile === "load" && !options.allowRemote && !options.allowLocal) {
     // The target-specific guard below gives a more useful error; this is intentionally not a bypass.
