@@ -14,10 +14,13 @@ describe("reportFromSummary", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
       profile: "smoke",
       targetHosts: ["api.example.com"],
-      workload: { vus: 1, duration: "10s" },
+      workload: { duration: "10s" },
       thresholds: { p95Ms: 200, failedRate: 0.01 }
     });
-    expect(report.metrics).toEqual({ requestCount: 42, failedRate: 0.001, avgMs: 80, p95Ms: 120 });
+    expect(report.metrics.requestCount).toBe(42);
+    expect(report.metrics.failedRate).toBe(0.001);
+    expect(report.metrics.avgMs).toBe(80);
+    expect(report.metrics.p95Ms).toBe(120);
     expect(report.thresholdsPassed).toBe(true);
   });
 
@@ -33,7 +36,7 @@ describe("reportFromSummary", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
       profile: "smoke",
       targetHosts: ["api.example.com"],
-      workload: { vus: 1, duration: "10s" },
+      workload: { duration: "10s" },
       thresholds: { p95Ms: 200, failedRate: 0.01 }
     });
     expect(report.thresholdsPassed).toBe(false);
@@ -54,7 +57,7 @@ describe("reportFromSummary", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
       profile: "smoke",
       targetHosts: ["api.example.com"],
-      workload: { vus: 1, duration: "10s" },
+      workload: { duration: "10s" },
       thresholds: { p95Ms: 200, failedRate: 0.2 }
     });
     expect(report.metrics.httpStatusDistribution).toEqual({ 200: 38, 400: 2, 500: 2 });

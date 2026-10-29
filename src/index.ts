@@ -3,7 +3,8 @@ import { Command } from "commander";
 import { access } from "node:fs/promises";
 import { loadConfig, saveConfig, defaultConfig, CONFIG_FILE, EndpointSchema } from "./config.js";
 import { readReport } from "./report.js";
-import { runTest, type Profile } from "./runner.js";
+import { runTest } from "./runner.js";
+import type { Profile } from "./profiles.js";
 
 const program = new Command();
 program.name("k6boost").description("Repeatable API performance testing powered by Grafana k6").version("0.2.0");
@@ -101,23 +102,48 @@ if (isInteractive) {
 
   program.command("test")
     .description("Run an API performance test using Grafana k6")
-    .option("-p, --profile <profile>", "Workload profile: smoke or load", "smoke")
+    .option("-p, --profile <profile>", "Test profile: smoke, load, stress, spike, soak, breakpoint, regression, or custom", "smoke")
     .option("--allow-remote", "Confirm authorization to send requests to remote hosts")
     .option("--allow-local", "Allow localhost and private-network targets")
-    .option("--vus <count>", "Virtual users (1-50)", (v) => Number(v))
+    .option("--vus <count>", "Virtual users", (v) => Number(v))
     .option("--duration <duration>", "Test duration, e.g. 10s or 1m")
+    .option("--arrival-rate <rate>", "Requests per second (arrival-rate based workload)", (v) => Number(v))
+    .option("--stage-duration <duration>", "Duration for each load stage")
+    .option("--max-vus <count>", "Maximum VUs to reach", (v) => Number(v))
     .option("-o, --output <path>", "Write report to this path")
-    .action(async (opts: { profile: string; allowRemote?: boolean; allowLocal?: boolean; vus?: number; duration?: string; output?: string }) => {
-      if (opts.profile !== "smoke" && opts.profile !== "load") throw new Error('Profile must be "smoke" or "load".');
+    .action(async (opts: any) => {
+      const validProfiles = ["smoke", "load", "stress", "spike", "soak", "breakpoint", "regression", "custom"];
+      if (!validProfiles.includes(opts.profile)) {
+        throw new Error(`Profile must be one of: ${validProfiles.join(", ")}`);
+      }
+      
+      const stages = opts.maxVus && opts.stageDuration 
+        ? generateStages(opts.vus || 1, opts.maxVus, opts.stageDuration)
+        : undefined;
+      
       await runTest(await loadConfig(), {
         profile: opts.profile as Profile,
         allowRemote: Boolean(opts.allowRemote),
         allowLocal: Boolean(opts.allowLocal),
         vus: opts.vus,
         duration: opts.duration,
+        arrivalRate: opts.arrivalRate,
+        stages: stages,
         output: opts.output
       });
     });
+
+  function generateStages(start: number, end: number, stageDuration: string): Array<{ duration: string; target: number }> {
+    const stages: Array<{ duration: string; target: number }> = [];
+    const step = Math.max(1, Math.floor((end - start) / 5));
+    for (let vus = start; vus <= end; vus += step) {
+      stages.push({ duration: stageDuration, target: vus });
+    }
+    if (stages[stages.length - 1]?.target !== end) {
+      stages.push({ duration: stageDuration, target: end });
+    }
+    return stages;
+  }
 
   program.command("compare")
     .description("Compare two saved JSON reports")

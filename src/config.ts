@@ -21,16 +21,72 @@ export const EndpointSchema = z.object({
   return true;
 }, { message: "body must be valid JSON when bodyType is 'json'", path: ["body"] });
 
+// Workload configuration for stages and arrival rate
+export const WorkloadSchema = z.object({
+  executor: z.enum(["constant-vus", "ramping-vus", "constant-arrival-rate", "ramping-arrival-rate", "shared-iterations", "per-vu-iterations"]).optional(),
+  vus: z.number().int().min(1).optional(),
+  duration: z.string().optional(),
+  arrivalRate: z.number().positive().optional(),
+  timeUnit: z.enum(["1s", "1m"]).default("1s"),
+  stages: z.array(z.object({
+    duration: z.string(),
+    target: z.number().int().positive()
+  })).optional(),
+  maxVUs: z.number().int().positive().optional(),
+  preAllocatedVUs: z.number().int().min(0).optional(),
+  gracefulStop: z.string().optional(),
+  startTime: z.string().optional()
+});
+
+// Profile-specific thresholds
+export const ProfileThresholdsSchema = z.object({
+  p90Ms: z.number().positive().optional(),
+  p95Ms: z.number().positive().optional(),
+  p99Ms: z.number().positive().optional(),
+  failedRate: z.number().min(0).max(1).optional(),
+  checkPassRate: z.number().min(0).max(1).optional(),
+  droppedIterations: z.number().int().min(0).optional()
+});
+
+// Profile configuration (per-profile overrides)
+export const ProfileConfigSchema = z.object({
+  profile: z.string(),
+  workload: WorkloadSchema.optional(),
+  thresholds: ProfileThresholdsSchema.optional(),
+  regressionConfig: z.object({
+    baselineReportId: z.string(),
+    tolerances: z.object({
+      p95Percent: z.number().min(0).default(10),
+      p95Absolute: z.number().optional(),
+      failedRatePercent: z.number().min(0).default(100),
+      checkPassRatePercent: z.number().min(0).default(0)
+    }).optional()
+  }).optional()
+});
+
+// Safety limits configuration
+export const SafetyLimitsSchema = z.object({
+  maxVUs: z.number().int().positive().default(1000),
+  maxDuration: z.string().default("1h"),
+  maxTotalRuntime: z.string().default("4h")
+});
+
 export const ProjectConfigSchema = z.object({
   version: z.literal(1),
   endpoints: z.array(EndpointSchema).default([]),
   thresholds: z.object({
     p95Ms: z.number().positive().default(1000),
     failedRate: z.number().min(0).max(1).default(0.01)
-  }).default({ p95Ms: 1000, failedRate: 0.01 })
+  }).default({ p95Ms: 1000, failedRate: 0.01 }),
+  profileConfigs: z.record(ProfileConfigSchema).optional(),
+  safetyLimits: SafetyLimitsSchema.optional()
 });
 
 export type Endpoint = z.infer<typeof EndpointSchema>;
+export type Workload = z.infer<typeof WorkloadSchema>;
+export type ProfileThresholds = z.infer<typeof ProfileThresholdsSchema>;
+export type ProfileConfig = z.infer<typeof ProfileConfigSchema>;
+export type SafetyLimits = z.infer<typeof SafetyLimitsSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 export const CONFIG_FILE = "k6boost.json";
 

@@ -1,6 +1,7 @@
-import { select, confirm } from "@inquirer/prompts";
+import { select, confirm, input } from "@inquirer/prompts";
 import type { ProjectConfig } from "../config.js";
-import type { Profile, RunOptions } from "../runner.js";
+import type { Profile } from "../profiles.js";
+import type { RunOptions } from "../runner.js";
 import { runTest } from "../runner.js";
 import {
   displayHeader,
@@ -50,6 +51,22 @@ export async function interactiveTestWorkflow(
         name: "📦 Load - 5 users, 30 seconds (realistic load)",
         value: "load",
       },
+      {
+        name: "🔥 Stress - Progressive load increase (CLI only)",
+        value: "stress",
+      },
+      {
+        name: "📍 Spike - Sudden traffic surge (CLI only)",
+        value: "spike",
+      },
+      {
+        name: "🛏️  Soak - Extended sustained load (CLI only)",
+        value: "soak",
+      },
+      {
+        name: "💥 Breakpoint - Find capacity limit (CLI only)",
+        value: "breakpoint",
+      },
     ],
   })) as Profile | null;
 
@@ -59,17 +76,57 @@ export async function interactiveTestWorkflow(
   }
 
   // Step 3: Show workload parameters
-  const defaults = {
-    smoke: { vus: 1, duration: "10s" },
-    load: { vus: 5, duration: "30s" },
-  };
-
-  const workload = defaults[profile];
+  let workload: { vus?: number; duration: string };
+  let vus: number | undefined;
+  let duration: string;
+  
+  if (profile === "smoke") {
+    workload = { vus: 1, duration: "10s" };
+    duration = "10s";
+    vus = 1;
+  } else if (profile === "load") {
+    workload = { vus: 5, duration: "30s" };
+    duration = "30s";
+    vus = 5;
+    
+    // Ask if user wants to customize VUs for load test
+    const customizeLoad = await confirm({
+      message: "Use custom number of VUs? (default: 5)",
+      default: false,
+    });
+    
+    if (customizeLoad) {
+      const customVUsInput = await input({
+        message: "Enter number of virtual users (1-50):",
+        default: "5",
+        validate: (value: string) => {
+          const num = Number(value);
+          if (!Number.isInteger(num) || num < 1 || num > 50) {
+            return "VUs must be an integer between 1 and 50";
+          }
+          return true;
+        },
+      });
+      vus = Number(customVUsInput);
+      workload.vus = vus;
+    }
+  } else {
+    // For other profiles, show that advanced config is needed
+    workload = { duration: "Custom configuration required" };
+    duration = "";
+    vus = undefined;
+  }
 
   console.log(`\nTest configuration:`);
   console.log(`  Profile:  ${profile}`);
-  console.log(`  Users:    ${workload.vus}`);
-  console.log(`  Duration: ${workload.duration}`);
+  if (vus) console.log(`  Users:    ${vus}`);
+  if (duration) console.log(`  Duration: ${duration}`);
+  
+  if (profile !== "smoke" && profile !== "load") {
+    displayWarning("Advanced profiles (stress, spike, soak, breakpoint) require command-line options.");
+    displayInfo("Use: k6boost test --profile " + profile + " --help");
+    return;
+  }
 
   // Step 4: Confirm before execution
   const hasRemote = config.endpoints.some((ep) => {
@@ -113,6 +170,8 @@ export async function interactiveTestWorkflow(
       profile,
       allowRemote: true,
       allowLocal: true,
+      vus: vus,
+      duration: duration,
     };
 
     const result = await runTest(config, options);

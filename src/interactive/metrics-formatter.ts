@@ -268,22 +268,43 @@ export function buildMetricsRows(report: RunReport): MetricsTableRow[] {
     value: formatLatency(report.metrics.avgMs),
   });
   
-  // Calculate median (p50) if available from distribution
-  // For now, we'll show N/A since k6 doesn't expose p50 directly in summary
-  rows.push({
-    metric: "  p90",
-    value: "N/A", // Not available in current k6 output
-  });
+  // V2 reports have extended metrics
+  const medianMs = (report as any).metrics.medianMs;
+  if (medianMs !== undefined) {
+    rows.push({
+      metric: "  Median",
+      value: formatLatency(medianMs),
+    });
+  }
+  
+  const p90Ms = (report as any).metrics.p90Ms;
+  if (p90Ms !== undefined) {
+    rows.push({
+      metric: "  p90",
+      value: formatLatency(p90Ms),
+    });
+  }
   
   rows.push({
     metric: "  p95",
     value: formatLatency(report.metrics.p95Ms),
   });
   
-  rows.push({
-    metric: "  Maximum",
-    value: "N/A", // Not available in current k6 output
-  });
+  const p99Ms = (report as any).metrics.p99Ms;
+  if (p99Ms !== undefined) {
+    rows.push({
+      metric: "  p99",
+      value: formatLatency(p99Ms),
+    });
+  }
+  
+  const maxMs = (report as any).metrics.maxMs;
+  if (maxMs !== undefined) {
+    rows.push({
+      metric: "  Maximum",
+      value: formatLatency(maxMs),
+    });
+  }
   
   rows.push({ metric: "", value: "" }); // Blank row
   
@@ -348,7 +369,7 @@ export function buildMetricsRows(report: RunReport): MetricsTableRow[] {
     value: "",
   });
   
-  const p95Passed = (report.metrics.p95Ms ?? 0) <= report.thresholds.p95Ms;
+  const p95Passed = (report.metrics.p95Ms ?? 0) <= (report.thresholds.p95Ms ?? 1000);
   const failedRatePassed = report.metrics.failedRate <= report.thresholds.failedRate;
   
   rows.push({
