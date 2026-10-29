@@ -1,279 +1,161 @@
 # k6boost
 
-TypeScript CLI for professional API performance testing with [Grafana k6](https://grafana.com/docs/k6/latest/). Simple, repeatable, safe, and production-ready.
+A CLI tool for API performance testing that wraps [Grafana k6](https://grafana.com/docs/k6/latest/). Configure endpoints, run tests using different load profiles, and compare results.
 
-**Status:** v0.3.0 with extended performance testing profiles.
+## Prerequisites
 
-## Quick Start
+- **Node.js** 20 or higher
+- **Grafana k6** installed and available on your PATH. [Install k6](https://grafana.com/docs/k6/latest/get-started/installation/)
 
-### Prerequisites
-- Node.js 20+
-- [Grafana k6](https://grafana.com/docs/k6/latest/get-started/installation/)
+## Installation
 
-### Installation
+From npm (when published):
+```bash
+npm install -g k6boost
+```
+
+From source:
 ```bash
 git clone https://github.com/sabeerwaqas/k6boost.git
 cd k6boost
-npm install && npm run build
-npm link  # Or: alias k6boost="node /path/to/dist/index.js"
+npm install
+npm run build
+npm link
 ```
 
-### 5-Minute Setup
-```bash
-# Initialize project
-mkdir my-api-tests && cd my-api-tests
-k6boost init
+## Quick Start
 
-# Add an endpoint
+Initialize a new k6boost project:
+```bash
+mkdir my-api-tests && cd my-api-tests
+k6boost
+```
+
+This launches the interactive menu. You can also use commands:
+
+```bash
+# Add an endpoint to test
 k6boost add-endpoint health --url https://httpbin.org/status/200 --method GET
 
-# Run smoke test (quick health check)
+# Run a smoke test (1 VU, 10 seconds)
 k6boost test --profile smoke --allow-remote
 
-# Run load test (realistic traffic)
-k6boost test --profile load --allow-remote
-
-# View report
+# View the report
 cat .k6boost/reports/*.json | jq .
 ```
 
+After the test completes, results are saved to `.k6boost/reports/{timestamp}.json`.
+
 ## Features
 
-### Supported HTTP Methods
-- GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
-- JSON request body validation
-- Custom headers and authentication
-- Environment variable-backed secrets (never persisted)
+### HTTP Methods & Flexibility
+- **Methods:** GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
+- **Request bodies:** JSON or plain text
+- **Custom headers:** Set any header, reference environment variables
+- **Authentication:** Headers with environment variable substitution (e.g., `Authorization: Bearer ${API_TOKEN}`)
 
-### Performance Testing Profiles
+### Test Profiles
+Choose the right profile for your testing need:
 
-| Profile | Use Case | Load | Duration | VUs/Arrival-Rate |
-|---------|----------|------|----------|------------------|
-| **Smoke** | Quick health check | Minimal | 10s | 1 VU |
-| **Load** | Realistic workload | Normal | 30s | 5 VUs |
-| **Stress** | Capacity analysis | Progressive increase | 30m max | Custom stages |
-| **Spike** | Sudden surge response | Baseline → spike → recovery | 20m max | Custom |
-| **Soak** | Degradation detection | Sustained | 2h max | Custom |
-| **Breakpoint** | Capacity limits | Progressive with safety | 40m max | Custom stages |
-| **Regression** | Baseline comparison | Reuse baseline | Reuse baseline | Reuse baseline |
-| **Custom** | User-defined | Configurable | 1h max | Flexible |
+| Profile | Purpose | Default load | Max duration |
+|---------|---------|-----------------|--------------|
+| **Smoke** | Quick health check | 1 VU, 10s | 1 minute |
+| **Load** | Normal workload simulation | 5 VUs, 30s | 10 minutes |
+| **Stress** | Capacity under increasing load | Configurable stages | 30 minutes |
+| **Spike** | Response to sudden traffic surge | Configurable stages | 20 minutes |
+| **Soak** | Degradation over sustained load | Configurable VU | 2 hours |
+| **Breakpoint** | Find capacity limits | Configurable stages | 40 minutes |
+| **Regression** | Compare against baseline | Reuse baseline config | Reuse baseline |
+| **Custom** | User-defined workload | Configurable | 1 hour |
 
-### Metrics & Analysis
-- Latency percentiles: p90, p95, p99, max
-- Request throughput (requests/second)
-- HTTP status distribution
-- Failed request rate and check pass rate
-- Threshold evaluation (pass/fail)
-- Regression detection with tolerance thresholds
-- Stage-by-stage analysis (stress/breakpoint tests)
-- Time-window analysis (soak tests)
+### Metrics Reported
+- **Latency:** average, p95, p99, maximum
+- **Throughput:** requests per second
+- **Errors:** failed request rate, HTTP status codes
+- **Thresholds:** pass/fail evaluation
+- **Stages:** per-stage breakdown for ramping tests
+- **Regression:** comparison against baseline with configurable tolerance
 
-### Safety & Security
-- Explicit authorization for remote testing (`--allow-remote`)
-- Explicit opt-in for local/private targets (`--allow-local`)
-- Conservative default load levels
-- Configurable safety limits (max VUs, duration, total runtime)
-- Secrets resolved at runtime only (never persisted)
-- No credentials embedded in URLs
-- No automatic retries (prevent load amplification)
-- Protected report files (mode 0o600)
+### Security & Responsible Testing
+- Explicit `--allow-remote` flag required for non-localhost targets
+- Environment variable secrets (never stored in config files)
+- Report files saved with restricted permissions
+- Safety limits (configurable max VUs, duration, total runtime)
 
-### Reporting & Comparison
-- Structured JSON reports with versioning
-- Historical baseline comparison
-- Regression detection with configurable tolerances
-- Backward compatible with v1 reports
-- Readable terminal output with status indicators
+## Understanding Results
 
-## Profiles & Use Cases
+After a test completes, k6boost displays a summary table and saves a JSON report. Key metrics:
 
-### Smoke Test
-Quick health check with minimal load.
+| Metric | Meaning |
+|--------|---------|
+| **Average latency** | Mean response time in milliseconds |
+| **p95 latency** | 95% of requests are faster than this time |
+| **p99 latency** | 99% of requests are faster than this time |
+| **Throughput (RPS)** | Requests completed per second |
+| **Failed rate** | Proportion of failed HTTP requests |
+| **Status distribution** | Count of 2xx, 4xx, 5xx responses |
+| **Thresholds** | Pass/fail result for configured performance limits |
+
+A passing test means the API met all configured thresholds during the test run. It does not verify functional correctness, security, or production readiness—only performance under the specified load.
+
+## Usage Examples
+
+### Add an endpoint
+```bash
+k6boost add-endpoint users --url https://api.example.com/users --method GET
+```
+
+### Add an endpoint with a POST body
+```bash
+k6boost add-endpoint create-user --url https://api.example.com/users --method POST \
+  --header "Content-Type: application/json" \
+  --body '{"name":"Test User","email":"test@example.com"}'
+```
+
+### Add an endpoint with authentication
+```bash
+export API_TOKEN="your-api-key"
+k6boost add-endpoint protected --url https://api.example.com/data \
+  --header "Authorization: Bearer ${API_TOKEN}"
+```
+
+### List configured endpoints
+```bash
+k6boost list-endpoints
+```
+
+### Run a smoke test
 ```bash
 k6boost test --profile smoke --allow-remote
 ```
-**Default:** 1 VU, 10 seconds  
-**When to use:** Pre-deployment checks, CI/CD health gates, quick validation
 
-### Load Test
-Measures performance under expected normal workload.
+### Run a load test
 ```bash
 k6boost test --profile load --allow-remote
 ```
-**Default:** 5 VUs, 30 seconds  
-**When to use:** Performance baseline, normal traffic simulation, SLA validation
 
-### Stress Test
-Determines how performance degrades under increasing load.
+### Run a stress test with stages
 ```bash
 k6boost test --profile stress --vus 10 --max-vus 100 --stage-duration 2m --allow-remote
 ```
-**Configurable:** Start VUs, end VUs, stage duration  
-**When to use:** Capacity planning, breaking points, resource limits discovery
 
-### Spike Test
-Tests response to sudden, unexpected traffic increases.
+### Save and compare results
 ```bash
-k6boost test --profile spike --vus 5 --max-vus 50 --stage-duration 30s --allow-remote
-```
-**Stages:** baseline → spike → recovery  
-**When to use:** Viral content handling, queue behavior, graceful degradation
-
-### Soak / Endurance Test
-Detects degradation during prolonged, sustained load.
-```bash
-k6boost test --profile soak --vus 10 --duration 2h --allow-remote
-```
-**Duration:** Up to 2 hours  
-**When to use:** Memory leak detection, long-term stability, resource accumulation
-
-### Breakpoint / Capacity Test
-Progressively increases load to find the breaking point.
-```bash
-k6boost test --profile breakpoint --vus 5 --max-vus 100 --stage-duration 2m --allow-remote
-```
-**Stops at:** First threshold failure or configured limit  
-**When to use:** Maximum capacity discovery, SLA boundaries, scaling decisions
-
-### Performance Regression Test
-Compares current performance against a saved baseline.
-```bash
-# Save baseline
+# Save baseline before code changes
 k6boost test --profile load --allow-remote --output baseline.json
 
-# Make API changes...
-
-# Test regression
-k6boost test --profile regression --baseline baseline.json --tolerance p95=10% failedRate=50% --allow-remote
-```
-**When to use:** Pre-commit checks, deployment validation, performance regressions
-
-### Custom Scenario
-User-defined workload configuration for specialized testing needs.
-```bash
-k6boost test --profile custom --executor ramping-arrival-rate --arrival-rate 100 --duration 5m --allow-remote
-```
-**Flexible:** Arrival-rate or VU-based, stages, custom thresholds  
-**When to use:** Complex workflows, non-standard load patterns, research
-
-## VUs vs. Arrival Rate
-
-### Virtual Users (VUs)
-- Concurrent **connections** making requests in a loop
-- Think: "How many users are hitting my API at once?"
-- Each VU makes as many requests as possible within the duration
-- Good for: Simulating real user concurrency, understanding client behavior
-- Predictable request distribution depends on response time
-
-### Arrival Rate (Requests Per Second)
-- Fixed **request rate** regardless of response time
-- Think: "I want exactly X requests per second, regardless of how long they take"
-- k6 will spawn/reduce VUs as needed to maintain the rate
-- Good for: Simulating external load, stress testing, request rate limits
-- Better for: Consistent load patterns, rate-based SLAs
-
-### When to use each
-| Scenario | Use |
-|----------|-----|
-| "How many concurrent users?" | VUs |
-| "Can we handle 1000 req/s?" | Arrival Rate |
-| "What's our performance at 50 concurrent users?" | VUs |
-| "What happens at peak bandwidth?" | Arrival Rate |
-| "Normal user simulation" | VUs |
-| "API rate limit testing" | Arrival Rate |
-
-## Thresholds & Percentiles
-
-### Percentiles Explained
-- **p90:** 90% of requests are faster than this time
-- **p95:** 95% of requests are faster than this time  
-- **p99:** 99% of requests are faster than this time
-- **max:** Slowest single request
-
-### Examples
-```json
-{
-  "thresholds": {
-    "p90Ms": 500,      // 90% of requests should be < 500ms
-    "p95Ms": 1000,     // 95% of requests should be < 1000ms
-    "p99Ms": 2000,     // 99% of requests should be < 2000ms
-    "failedRate": 0.01 // Failed requests should be < 1%
-  }
-}
-```
-
-### Regression Tolerances
-Allow specified degradation when comparing against baseline:
-```bash
-k6boost test --profile regression --baseline baseline.json \
-  --tolerance p95=10% p99=15% failedRate=50% --allow-remote
-```
-- `p95=10%`: Allow 10% slower p95 latency
-- `failedRate=50%`: Allow 50% more failures (e.g., 0.5% → 0.75%)
-
-## Safe Examples
-
-### Testing a Public API (httpbin)
-```bash
-k6boost init
-k6boost add-endpoint httpbin --url https://httpbin.org/get --method GET
-k6boost test --profile smoke --allow-remote
-```
-
-### Testing with Authentication
-```bash
-export API_TOKEN="your-api-key"
-k6boost add-endpoint protected \
-  --url https://api.example.com/data \
-  --header "Authorization: Bearer ${API_TOKEN}"
-k6boost test --profile load --allow-remote
-```
-
-### Multiple Endpoints
-```bash
-k6boost add-endpoint health --url https://api.example.com/health --method GET
-k6boost add-endpoint search --url https://api.example.com/search --method POST \
-  --body '{"query":"test"}' \
-  --header "Content-Type: application/json"
-k6boost test --profile load --allow-remote
-```
-
-### Saving & Comparing Baselines
-```bash
-# Establish baseline before changes
-k6boost test --profile load --allow-remote --output baseline.json
-
-# Make changes to your API...
-
-# Test again
+# Later, compare a new run against the baseline
 k6boost test --profile load --allow-remote --output current.json
 
-# Compare
+# View the comparison
 k6boost compare baseline.json current.json
-```
-
-### Stress Test With Stages
-```bash
-# Progressive load: 10 → 50 → 100 VUs in 2-minute stages
-k6boost test --profile stress \
-  --vus 10 \
-  --max-vus 100 \
-  --stage-duration 2m \
-  --allow-remote
-```
-
-### Soak Test
-```bash
-# Run 30 minutes at constant 20 VUs
-k6boost test --profile soak \
-  --vus 20 \
-  --duration 30m \
-  --allow-remote
 ```
 
 ## Configuration
 
 ### k6boost.json
+k6boost stores endpoint and threshold configuration in `k6boost.json`:
+
 ```json
 {
   "version": 1,
@@ -283,8 +165,7 @@ k6boost test --profile soak \
       "url": "https://api.example.com/users",
       "method": "GET",
       "headers": {
-        "Authorization": "Bearer ${API_TOKEN}",
-        "X-Custom-Header": "value"
+        "Authorization": "Bearer ${API_TOKEN}"
       }
     },
     {
@@ -295,7 +176,7 @@ k6boost test --profile soak \
         "Content-Type": "application/json",
         "Authorization": "Bearer ${API_TOKEN}"
       },
-      "body": "{\"name\":\"Test User\",\"email\":\"test@example.com\"}",
+      "body": "{\"name\":\"Test\",\"email\":\"test@example.com\"}",
       "bodyType": "json"
     }
   ],
@@ -311,112 +192,70 @@ k6boost test --profile soak \
 }
 ```
 
-### Secrets Management
-Never commit secrets. Use environment variables:
+### Environment Variables for Secrets
+Never commit secrets. Reference environment variables using `${VARIABLE_NAME}` syntax:
 
 ```bash
-# Define in your environment
-export API_TOKEN="secret-key-here"
-export DB_PASSWORD="password-here"
-
-# Reference in config with ${VAR_NAME} syntax
-# Values are resolved at runtime, never persisted in config or reports
+export API_TOKEN="secret-key"
+export DB_PASSWORD="password"
 ```
 
-✓ Secrets are **never** saved to config, scripts, or reports  
-✓ Resolved at runtime only  
-✓ Reference format: `"Authorization: Bearer ${API_TOKEN}"`
-
-## CI/CD Integration
-
-### GitHub Actions Example
-```yaml
-name: Performance Tests
-
-on: [push, pull_request]
-
-jobs:
-  performance:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm install -g k6boost
-      - run: k6 --version  # Verify k6 is installed
-      - run: |
-          k6boost init
-          k6boost add-endpoint health --url https://staging-api.example.com/health
-          k6boost test --profile smoke --allow-remote
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: performance-reports
-          path: .k6boost/reports/
+Then use them in headers or request bodies:
+```bash
+k6boost add-endpoint api --url https://api.example.com/data \
+  --header "Authorization: Bearer ${API_TOKEN}"
 ```
+
+Secrets are resolved at runtime only and never stored in config files or reports.
 
 ## Reports
 
-Reports are saved to `.k6boost/reports/{timestamp}.json` with protected permissions (0o600).
+Reports are saved to `.k6boost/reports/{timestamp}.json` after each test run.
 
-### Report Contents
-- Run ID and timestamp
-- Test profile and workload configuration
-- Target host(s) and HTTP method
-- Latency percentiles (p90, p95, p99, max, average)
-- Throughput (requests/second)
-- Failure rate and check pass rate
-- HTTP status code distribution
-- Threshold results and overall outcome
+### What's in a report
+- Test profile and workload (VUs, duration, stages)
+- Target endpoint(s) and HTTP methods
+- Latency percentiles (average, p95, p99, max)
+- Request throughput
+- Failure rate and HTTP status distribution
+- Threshold evaluation result (pass/fail)
 
-### Viewing Reports
+### Viewing reports
 ```bash
-# View latest report
-cat .k6boost/reports/*.json | jq .
-
-# Compare two reports
-k6boost compare baseline.json current.json
+# View the latest report
+cat .k6boost/reports/*.json | tail -1 | jq .
 
 # Extract specific metrics
 cat report.json | jq '.metrics | {requestCount, avgMs, p95Ms, failedRate}'
+
+# Compare two reports
+k6boost compare baseline.json current.json
 ```
+
+### Report format
+Reports use semantic versioning (v1 and v2 schemas). Version 2 reports include additional metrics like stage-by-stage breakdowns for ramping tests and time-window analysis for soak tests.
 
 ## Limitations
 
-- **No request chaining:** Each endpoint is tested independently per iteration
-- **No OpenAPI/Swagger import:** Must add endpoints manually or via CLI
+- **No request chaining:** Each endpoint is tested independently in each iteration
+- **No OpenAPI/Swagger import:** Manually add endpoints via CLI or config file
 - **No custom JavaScript:** Limited to HTTP endpoint testing
-- **Single workload per test:** One set of endpoints per run
-- **No built-in dashboarding:** Reports are JSON files only
+- **Single workload per run:** Test one set of endpoints per test execution
+- **No built-in dashboards:** View reports as JSON files
 
-## Authorization & Responsible Testing
+## Responsible Testing
 
-### Best Practices
-1. **Only test APIs you own or are explicitly authorized to test**
-   - Get written permission before stress testing third-party APIs
-   - Respect rate limits and terms of service
-   - Test during off-peak hours when possible
+Before running a performance test:
 
-2. **Inform your team**
-   - Document planned test times and expected load
-   - Notify on-call engineers before running high-load tests
-   - Have a rollback plan
+1. **Get authorization:** Only test APIs you own or are explicitly permitted to test
+2. **Inform your team:** Document test times and expected load; notify on-call engineers
+3. **Start small:** Begin with a smoke test, then gradually increase load
+4. **Monitor:** Watch infrastructure metrics during higher-load tests
+5. **Protect secrets:** Never commit API keys; always use environment variables
 
-3. **Start small**
-   - Begin with smoke tests to validate test setup
-   - Gradually increase load (smoke → load → stress)
-   - Monitor infrastructure during testing
+If testing a third-party API, respect their terms of service and rate limits. Run tests during off-peak hours when possible.
 
-4. **Review results**
-   - Examine all reports before sharing
-   - Redact sensitive operational details if needed
-   - Learn from failures
-
-5. **Protect secrets**
-   - Never commit API keys or tokens
-   - Use environment variables exclusively
-   - Never log headers or request bodies in reports
+A passing performance test does not guarantee the API is secure, functionally correct, or ready for production—only that it met the performance thresholds you configured.
 
 ## Troubleshooting
 
@@ -453,8 +292,4 @@ MIT. See [LICENSE](LICENSE).
 
 ## Contributing
 
-Contributions welcome! Please open an issue or submit a pull request.
-
----
-
-**Made with ❤️ for performance engineers**
+Contributions are welcome. Please open an issue or submit a pull request.
