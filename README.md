@@ -59,7 +59,6 @@ Optional test flags: `--vus`, `--duration`, `--allow-local`, `--allow-remote`, a
       "url": "https://your-authorized-host.example/health",
       "method": "GET",
       "headers": {},
-      "body": null
     }
   ],
   "thresholds": {
