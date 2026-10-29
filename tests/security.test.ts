@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLocalHostname, resolveHeaders, validateTargets } from "../src/security.js";
+import { isLocalHostname, resolveHeaders, resolveBody, validateTargets } from "../src/security.js";
 import type { Endpoint } from "../src/config.js";
 
 const endpoint = (url: string): Endpoint => ({ name: "api", url, method: "GET", headers: {} });
@@ -37,5 +37,25 @@ describe("environment-backed headers", () => {
   it("fails when a required environment variable is missing", () => {
     delete process.env.K6BOOST_MISSING;
     expect(() => resolveHeaders({ Authorization: "${K6BOOST_MISSING}" }, "api")).toThrow(/is not set/);
+  });
+});
+
+describe("body resolution and validation", () => {
+  it("accepts valid JSON bodies with bodyType json", () => {
+    const body = '{"key": "value"}';
+    expect(resolveBody(body, "json", "test")).toBe(body);
+  });
+
+  it("rejects invalid JSON bodies with bodyType json", () => {
+    expect(() => resolveBody("{invalid json}", "json", "test")).toThrow(/not valid JSON/);
+  });
+
+  it("accepts plain text bodies", () => {
+    const body = "plain text";
+    expect(resolveBody(body, "text", "test")).toBe(body);
+  });
+
+  it("returns undefined for missing bodies", () => {
+    expect(resolveBody(undefined, "text", "test")).toBeUndefined();
   });
 });

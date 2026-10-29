@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Endpoint, ProjectConfig } from "./config.js";
-import { resolveHeaders, validateTargets } from "./security.js";
+import { resolveHeaders, resolveBody, validateTargets } from "./security.js";
 import { reportFromSummary, saveReport, type RunReport } from "./report.js";
 
 export type Profile = "smoke" | "load";
@@ -20,7 +20,17 @@ function runProcess(command: string, args: string[], env: NodeJS.ProcessEnv): Pr
 }
 
 function makeScript(endpoints: Array<Endpoint & { headers: Record<string, string> }>, p95Ms: number, failedRate: number): string {
-  const encoded = JSON.stringify(endpoints);
+  // Prepare endpoints with serialized bodies for safe JSON embedding
+  const endpointsForScript = endpoints.map(e => ({
+    name: e.name,
+    url: e.url,
+    method: e.method,
+    headers: e.headers,
+    body: e.body ? (e.bodyType === "json" ? JSON.parse(e.body) : e.body) : null,
+    bodyType: e.bodyType ?? "text"
+  }));
+  
+  const encoded = JSON.stringify(endpointsForScript);
   return `import http from "k6/http";
 import { check } from "k6";
 const endpoints = ${encoded};
@@ -32,12 +42,22 @@ export const options = {
 };
 export default function () {
   for (const endpoint of endpoints) {
-    const response = http.request(endpoint.method, endpoint.url, endpoint.body ?? null, {
-      headers: endpoint.headers,
-      tags: { endpoint: endpoint.name, method: endpoint.method },
-      timeout: "30s",\n      redirects: 0
+    let body = null;
+    let params = { headers: endpoint.headers, tags: { endpoint: endpoint.name, method: endpoint.method }, timeout: "30s", redirects: 0 };
+    
+    if (endpoint.body !== null) {
+      if (endpoint.bodyType === "json") {
+        body = JSON.stringify(endpoint.body);
+        params.headers["Content-Type"] = "application/json";
+      } else {
+        body = endpoint.body;
+      }
+    }
+    
+    const response = http.request(endpoint.method, endpoint.url, body, params);
+    check(response, { 
+      [endpoint.name + " responds"]: (r) => r.status >= 200 && r.status < 400 
     });
-    check(response, { [endpoint.name + " responds"]: (r) => r.status >= 200 && r.status < 400 });
   }
 }
 export function handleSummary(data) {
@@ -73,7 +93,14 @@ export async function runTest(config: ProjectConfig, options: RunOptions): Promi
     // The target-specific guard below gives a more useful error; this is intentionally not a bypass.
   }
   validateTargets(config.endpoints, options.allowRemote, options.allowLocal);
-  const endpoints = config.endpoints.map((e) => ({ ...e, headers: resolveHeaders(e.headers, e.name) }));
+  
+  // Resolve headers and validate bodies
+  const endpoints = config.endpoints.map((e) => ({
+    ...e,
+    headers: resolveHeaders(e.headers, e.name),
+    body: resolveBody(e.body, e.bodyType, e.name)
+  }));
+  
   const workdir = await mkdtemp(join(tmpdir(), "k6boost-"));
   const scriptPath = join(workdir, "test.js");
   const summaryPath = join(workdir, "summary.json");
@@ -98,7 +125,17 @@ export async function runTest(config: ProjectConfig, options: RunOptions): Promi
     });
     const path = await saveReport(report, options.output);
     console.log(`\nReport saved: ${path}`);
-    console.log(`Requests: ${report.metrics.requestCount} | p95: ${report.metrics.p95Ms ?? "n/a"} ms | failed: ${(report.metrics.failedRate * 100).toFixed(2)}%`);
+    
+    // Enhanced output with status distribution
+    let statusOutput = "";
+    if (report.metrics.httpStatusDistribution && Object.keys(report.metrics.httpStatusDistribution).length > 0) {
+      statusOutput = "\nHTTP Status Distribution:\n";
+      for (const [status, count] of Object.entries(report.metrics.httpStatusDistribution).sort((a, b) => Number(a[0]) - Number(b[0]))) {
+        statusOutput += `  ${status}: ${count}\n`;
+      }
+    }
+    
+    console.log(`Requests: ${report.metrics.requestCount} | p95: ${report.metrics.p95Ms ?? "n/a"} ms | failed: ${(report.metrics.failedRate * 100).toFixed(2)}%${statusOutput ? "\n" + statusOutput : ""}`);
     if (code !== 0 || !report.thresholdsPassed) throw new Error("Performance test failed. Review k6 output and the saved report.");
     return { report, path };
   } finally {

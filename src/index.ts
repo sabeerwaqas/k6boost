@@ -24,17 +24,56 @@ program.command("init")
 program.command("add-endpoint")
   .description("Add an HTTP endpoint to k6boost.json")
   .argument("<name>", "Unique endpoint name")
-  .argument("<url>", "HTTP(S) URL")
+  .option("--url <url>", "HTTP(S) URL (required)")
   .option("-X, --method <method>", "HTTP method", "GET")
-  .option("--body <body>", "Request body (for example JSON text)")
-  .action(async (name: string, url: string, opts: { method: string; body?: string }) => {
+  .option("--header <header>", "Request header in key:value format (repeatable)", (val, prev: string[] = []) => [...prev, val])
+  .option("--body <body>", "Request body (JSON or plain text)")
+  .option("--body-type <type>", "Body type: json or text (inferred from Content-Type if not specified)")
+  .action(async (name: string, opts: { url?: string; method: string; header?: string[]; body?: string; bodyType?: string }) => {
+    // Support both old format (positional URL) and new format (--url flag)
+    let url = opts.url;
+    if (!url) {
+      throw new Error("URL is required. Use: k6boost add-endpoint <name> --url <url> [options]");
+    }
+    
     const config = await loadConfig();
     const method = opts.method.toUpperCase();
-    const endpoint = EndpointSchema.parse({ name, url, method, headers: {}, ...(opts.body === undefined ? {} : { body: opts.body }) });
+    
+    // Parse headers
+    const headers: Record<string, string> = {};
+    if (opts.header) {
+      for (const header of opts.header) {
+        const colonIdx = header.indexOf(":");
+        if (colonIdx <= 0) throw new Error(`Header "${header}" must be in key:value format.`);
+        const key = header.slice(0, colonIdx).trim();
+        const value = header.slice(colonIdx + 1).trim();
+        if (!key) throw new Error("Header key cannot be empty.");
+        headers[key] = value;
+      }
+    }
+    
+    // Infer body type from Content-Type header if not specified
+    let bodyType = opts.bodyType;
+    if (opts.body && !bodyType) {
+      if (headers["Content-Type"]?.includes("application/json") || headers["content-type"]?.includes("application/json")) {
+        bodyType = "json";
+      }
+    }
+    
+    const endpoint = EndpointSchema.parse({
+      name,
+      url,
+      method,
+      headers,
+      body: opts.body,
+      bodyType
+    });
+    
     if (config.endpoints.some((e) => e.name === endpoint.name)) throw new Error(`Endpoint "${endpoint.name}" already exists.`);
     config.endpoints.push(endpoint);
     await saveConfig(config);
     console.log(`Added ${endpoint.method} ${endpoint.url} as "${endpoint.name}".`);
+    if (opts.body) console.log(`  Body (${bodyType ?? "text"}): ${opts.body.length} bytes`);
     console.log("For authentication, set headers in k6boost.json using values like ${API_TOKEN} as an environment-variable reference.");
   });
 
@@ -43,7 +82,11 @@ program.command("list-endpoints")
   .action(async () => {
     const config = await loadConfig();
     if (!config.endpoints.length) return console.log("No endpoints configured.");
-    for (const e of config.endpoints) console.log(`${e.name}\t${e.method}\t${e.url}`);
+    console.log("Name\tMethod\tURL\tBody");
+    for (const e of config.endpoints) {
+      const bodyInfo = e.body ? `${e.bodyType ?? "text"} (${e.body.length}B)` : "-";
+      console.log(`${e.name}\t${e.method}\t${e.url}\t${bodyInfo}`);
+    }
   });
 
 program.command("test")

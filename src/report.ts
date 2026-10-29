@@ -9,7 +9,13 @@ export interface RunReport {
   targetHosts: string[];
   workload: { vus: number; duration: string };
   thresholds: { p95Ms: number; failedRate: number };
-  metrics: { requestCount: number; failedRate: number; avgMs: number | null; p95Ms: number | null };
+  metrics: {
+    requestCount: number;
+    failedRate: number;
+    avgMs: number | null;
+    p95Ms: number | null;
+    httpStatusDistribution?: Record<number, number>;
+  };
   thresholdsPassed: boolean;
 }
 
@@ -25,12 +31,30 @@ export function reportFromSummary(summary: K6Summary, meta: Omit<RunReport, "sch
   const failedRate = failed.rate ?? 0;
   const avgMs = Number.isFinite(duration.avg) ? duration.avg! : null;
   const p95Ms = Number.isFinite(duration["p(95)"]) ? duration["p(95)"]! : null;
+  
+  // Extract HTTP status code distribution from k6 metrics
+  const httpStatusDistribution: Record<number, number> = {};
+  for (const [key, metric] of Object.entries(metrics)) {
+    const match = /^http_req_duration\{.*status:([\d]+).*\}$/.exec(key);
+    if (match) {
+      const statusCode = Number(match[1]!);
+      const count = metric.values?.count ?? 0;
+      if (count > 0) httpStatusDistribution[statusCode] = count;
+    }
+  }
+  
   const thresholdsPassed = p95Ms !== null && p95Ms <= meta.thresholds.p95Ms &&
     failedRate <= meta.thresholds.failedRate;
   return {
     schemaVersion: 1,
     ...meta,
-    metrics: { requestCount: count, failedRate, avgMs, p95Ms },
+    metrics: { 
+      requestCount: count, 
+      failedRate, 
+      avgMs, 
+      p95Ms,
+      ...(Object.keys(httpStatusDistribution).length > 0 && { httpStatusDistribution })
+    },
     thresholdsPassed
   };
 }

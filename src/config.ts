@@ -7,8 +7,19 @@ export const EndpointSchema = z.object({
   url: z.string().url().refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "Endpoint URL must use HTTP or HTTPS."),
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]).default("GET"),
   headers: z.record(z.string()).default({}),
-  body: z.string().optional()
-});
+  body: z.string().optional(),
+  bodyType: z.enum(["json", "text"]).optional()
+}).refine((data) => {
+  // Validate that bodyType and body are consistent
+  if (data.body && data.bodyType === "json") {
+    try {
+      JSON.parse(data.body);
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}, { message: "body must be valid JSON when bodyType is 'json'", path: ["body"] });
 
 export const ProjectConfigSchema = z.object({
   version: z.literal(1),

@@ -40,3 +40,18 @@ export function resolveHeaders(headers: Record<string, string>, endpointName: st
   }
   return resolved;
 }
+
+export function resolveBody(body: string | undefined, bodyType: string | undefined, endpointName: string): string | undefined {
+  if (!body) return undefined;
+  
+  // For JSON bodies, validate and preserve the structure
+  if (bodyType === "json") {
+    try {
+      JSON.parse(body);
+    } catch {
+      throw new Error(`Body for endpoint "${endpointName}" is not valid JSON.`);
+    }
+  }
+  
+  return body;
+}
