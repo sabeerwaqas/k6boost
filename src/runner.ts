@@ -23,8 +23,6 @@ function makeScript(endpoints: Array<Endpoint & { headers: Record<string, string
   const encoded = JSON.stringify(endpoints);
   return `import http from "k6/http";
 import { check } from "k6";
-import { textSummary } from "https://jslib.k6.io/k6-summary/0.0.4/index.js";
-
 const endpoints = ${encoded};
 export const options = {
   thresholds: {
@@ -45,7 +43,7 @@ export default function () {
 export function handleSummary(data) {
   const output = {};
   output[__ENV.K6BOOST_SUMMARY_PATH] = JSON.stringify(data, null, 2);
-  output.stdout = textSummary(data, { indent: " ", enableColors: false });
+  output.stdout = JSON.stringify({ metrics: data.metrics }, null, 2);
   return output;
 }
 `;
@@ -78,7 +76,7 @@ export async function runTest(config: ProjectConfig, options: RunOptions): Promi
   const summaryPath = join(workdir, "summary.json");
   try {
     await writeFile(scriptPath, makeScript(endpoints, config.thresholds.p95Ms, config.thresholds.failedRate), { encoding: "utf8", mode: 0o600 });
-    const args = ["run", "--vus", String(vus), "--duration", duration, scriptPath];
+    const args = ["run", "--vus", String(vus), "--duration", duration, "-e", `K6BOOST_SUMMARY_PATH=${summaryPath}`, scriptPath];
     const code = await runProcess("k6", args, { ...process.env, K6BOOST_SUMMARY_PATH: summaryPath });
     let summary: unknown;
     try {
