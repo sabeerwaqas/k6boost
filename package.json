@@ -1,6 +1,6 @@
 {
   "name": "k6boost",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A safety-conscious CLI for repeatable API performance tests powered by Grafana k6",
   "type": "module",
   "bin": { "k6boost": "./dist/index.js" },
