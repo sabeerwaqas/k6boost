@@ -1,5 +1,5 @@
-import { select, confirm, input } from "@inquirer/prompts";
-import type { ProjectConfig } from "../config.js";
+import { select, confirm, input, checkbox } from "@inquirer/prompts";
+import type { ProjectConfig, Endpoint } from "../config.js";
 import type { Profile } from "../profiles.js";
 import type { RunOptions } from "../runner.js";
 import { runTest } from "../runner.js";
@@ -13,6 +13,59 @@ import {
 import type { RunReport } from "../report.js";
 import { displayMetricsTable } from "./metrics-formatter.js";
 
+type EndpointSelectionMode = "single" | "multiple" | "all" | "cancel";
+
+/**
+ * Ask the user which saved endpoints should be included in this run.
+ * Selection is based on endpoint names, not array positions, and never
+ * mutates the saved project configuration.
+ */
+export async function selectEndpointsForTest(
+  endpoints: Endpoint[]
+): Promise<Endpoint[]> {
+  if (endpoints.length === 0) return [];
+
+  const mode = (await select({
+    message: "What would you like to test?",
+    choices: [
+      { name: "Select a single endpoint", value: "single" },
+      { name: "Select multiple endpoints", value: "multiple" },
+      { name: "Select all endpoints", value: "all" },
+      { name: "Cancel", value: "cancel" },
+    ],
+  })) as EndpointSelectionMode;
+
+  if (mode === "cancel") return [];
+  if (mode === "all") return [...endpoints];
+
+  if (mode === "single") {
+    const selectedName = await select({
+      message: "Select an endpoint to test:",
+      choices: endpoints.map((endpoint) => ({
+        name: `${endpoint.method.padEnd(7)} ${endpoint.name} — ${endpoint.url}`,
+        value: endpoint.name,
+      })),
+      pageSize: 12,
+    });
+    const selected = endpoints.find((endpoint) => endpoint.name === selectedName);
+    return selected ? [selected] : [];
+  }
+
+  const selectedNames = await checkbox({
+    message: "Select endpoints to test (Space to toggle, Enter to continue):",
+    choices: endpoints.map((endpoint) => ({
+      name: `${endpoint.method.padEnd(7)} ${endpoint.name} — ${endpoint.url}`,
+      value: endpoint.name,
+    })),
+    pageSize: 12,
+    required: false,
+  });
+
+  const selectedNameSet = new Set(selectedNames);
+  // Keep the original saved-endpoint order for predictable execution.
+  return endpoints.filter((endpoint) => selectedNameSet.has(endpoint.name));
+}
+
 export async function interactiveTestWorkflow(
   config: ProjectConfig
 ): Promise<void> {
@@ -23,50 +76,40 @@ export async function interactiveTestWorkflow(
 
   displayHeader("Run a Performance Test");
 
-  // Step 1: Show endpoints and confirm
-  console.log("\nConfigured endpoints:");
-  config.endpoints.forEach((ep, i) => {
-    console.log(`  ${i + 1}. ${ep.method.padEnd(6)} ${ep.url} (${ep.name})`);
-  });
-
-  const continueTest = await confirm({
-    message: "Test these endpoints?",
-    default: true,
-  });
-
-  if (!continueTest) {
-    displayInfo("Test cancelled.");
+  // Step 1: Explicitly select the endpoints for this run.
+  const selectedEndpoints = await selectEndpointsForTest(config.endpoints);
+  if (selectedEndpoints.length === 0) {
+    displayInfo("No endpoints selected. Test cancelled.");
     return;
   }
 
-  // Step 2: Select test profile
+  // Step 2: Review the exact selection before configuring or executing it.
+  console.log("\nSelected endpoints:");
+  selectedEndpoints.forEach((ep, i) => {
+    console.log(`  ${i + 1}. ${ep.method.padEnd(7)} ${ep.name} — ${ep.url}`);
+  });
+  console.log(`\nSelected: ${selectedEndpoints.length} endpoint(s)`);
+
+  const continueTest = await confirm({
+    message: `Continue with these ${selectedEndpoints.length} endpoint(s)?`,
+    default: false,
+  });
+
+  if (!continueTest) {
+    displayInfo("Test cancelled. No requests were sent.");
+    return;
+  }
+
+  // Step 3: Select test profile.
   const profile = (await select({
     message: "Choose test profile:",
     choices: [
-      {
-        name: "🚬 Smoke - 1 user, 10 seconds (quick check)",
-        value: "smoke",
-      },
-      {
-        name: "📦 Load - 5 users, 30 seconds (realistic load)",
-        value: "load",
-      },
-      {
-        name: "🔥 Stress - Progressive load increase (CLI only)",
-        value: "stress",
-      },
-      {
-        name: "📍 Spike - Sudden traffic surge (CLI only)",
-        value: "spike",
-      },
-      {
-        name: "🛏️  Soak - Extended sustained load (CLI only)",
-        value: "soak",
-      },
-      {
-        name: "💥 Breakpoint - Find capacity limit (CLI only)",
-        value: "breakpoint",
-      },
+      { name: "🚬 Smoke - 1 user, 10 seconds (quick check)", value: "smoke" },
+      { name: "📦 Load - 5 users, 30 seconds (realistic load)", value: "load" },
+      { name: "🔥 Stress - Progressive load increase (CLI only)", value: "stress" },
+      { name: "📍 Spike - Sudden traffic surge (CLI only)", value: "spike" },
+      { name: "🛏️  Soak - Extended sustained load (CLI only)", value: "soak" },
+      { name: "💥 Breakpoint - Find capacity limit (CLI only)", value: "breakpoint" },
     ],
   })) as Profile | null;
 
@@ -75,26 +118,22 @@ export async function interactiveTestWorkflow(
     return;
   }
 
-  // Step 3: Show workload parameters
-  let workload: { vus?: number; duration: string };
+  // Step 4: Configure the supported interactive workload.
   let vus: number | undefined;
   let duration: string;
-  
+
   if (profile === "smoke") {
-    workload = { vus: 1, duration: "10s" };
     duration = "10s";
     vus = 1;
   } else if (profile === "load") {
-    workload = { vus: 5, duration: "30s" };
     duration = "30s";
     vus = 5;
-    
-    // Ask if user wants to customize VUs for load test
+
     const customizeLoad = await confirm({
       message: "Use custom number of VUs? (default: 5)",
       default: false,
     });
-    
+
     if (customizeLoad) {
       const customVUsInput = await input({
         message: "Enter number of virtual users (1-50):",
@@ -108,32 +147,25 @@ export async function interactiveTestWorkflow(
         },
       });
       vus = Number(customVUsInput);
-      workload.vus = vus;
     }
   } else {
-    // For other profiles, show that advanced config is needed
-    workload = { duration: "Custom configuration required" };
-    duration = "";
-    vus = undefined;
-  }
-
-  console.log(`\nTest configuration:`);
-  console.log(`  Profile:  ${profile}`);
-  if (vus) console.log(`  Users:    ${vus}`);
-  if (duration) console.log(`  Duration: ${duration}`);
-  
-  if (profile !== "smoke" && profile !== "load") {
     displayWarning("Advanced profiles (stress, spike, soak, breakpoint) require command-line options.");
     displayInfo("Use: k6boost test --profile " + profile + " --help");
     return;
   }
 
-  // Step 4: Confirm before execution
-  const hasRemote = config.endpoints.some((ep) => {
+  console.log("\nTest configuration:");
+  console.log(`  Profile:   ${profile}`);
+  console.log(`  Endpoints: ${selectedEndpoints.length}`);
+  console.log(`  Users:     ${vus}`);
+  console.log(`  Duration:  ${duration}`);
+
+  // Step 5: Confirm remote testing only for the selected endpoints.
+  const hasRemote = selectedEndpoints.some((ep) => {
     try {
       const url = new URL(ep.url);
       return (
-        !url.hostname.match(/^(localhost|127\.0\.0\.1|::1)$/) &&
+        !url.hostname.match(/^(localhost|127\\.0\\.0\\.1|::1)$/) &&
         !url.hostname.endsWith(".local") &&
         !url.hostname.endsWith(".internal")
       );
@@ -143,12 +175,8 @@ export async function interactiveTestWorkflow(
   });
 
   if (hasRemote) {
-    displayWarning(
-      "You are about to send test traffic to remote endpoints."
-    );
-    displayInfo(
-      "Ensure you have permission to test these APIs and that they can handle the load."
-    );
+    displayWarning("You are about to send test traffic to remote endpoints.");
+    displayInfo("Ensure you have permission to test these APIs and that they can handle the load.");
 
     const proceed = await confirm({
       message: "Continue with remote testing?",
@@ -156,12 +184,12 @@ export async function interactiveTestWorkflow(
     });
 
     if (!proceed) {
-      displayInfo("Test cancelled.");
+      displayInfo("Test cancelled. No requests were sent.");
       return;
     }
   }
 
-  // Step 5: Execute test
+  // Step 6: Execute against a scoped config. The saved config is not mutated.
   console.log("\n");
   displayInfo("Starting test...\n");
 
@@ -170,16 +198,17 @@ export async function interactiveTestWorkflow(
       profile,
       allowRemote: true,
       allowLocal: true,
-      vus: vus,
-      duration: duration,
+      vus,
+      duration,
     };
 
-    const result = await runTest(config, options);
+    const result = await runTest(
+      { ...config, endpoints: selectedEndpoints },
+      options
+    );
 
-    // Step 6: Display results
     displayTestResults(result.report);
 
-    // Step 7: Offer next actions
     const nextAction = await select({
       message: "What would you like to do next?",
       choices: [
