@@ -9,11 +9,9 @@ import type { Profile } from "./profiles.js";
 const program = new Command();
 program.name("k6boost").description("Repeatable API performance testing powered by Grafana k6").version("0.2.0");
 
-// Check if running interactively (no arguments and TTY)
 const isInteractive = process.argv.length === 2 && process.stdout.isTTY;
 
 if (isInteractive) {
-  // Launch interactive CLI
   import("./interactive/cli.js").then((module) => {
     module.runInteractiveCLI().catch((error: unknown) => {
       console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
@@ -21,7 +19,6 @@ if (isInteractive) {
     });
   });
 } else {
-  // Use existing command-based CLI
   program.command("init")
     .description("Create a starter k6boost.json configuration")
     .action(async () => {
@@ -35,6 +32,29 @@ if (isInteractive) {
       console.log(`Created ${CONFIG_FILE}. Add endpoints with "k6boost add-endpoint <name> <url>".`);
     });
 
+  program.command("import-openapi")
+    .description("Import API endpoints from an OpenAPI JSON URL")
+    .argument("<url>", "URL of an OpenAPI/Swagger JSON document")
+    .option("--base-url <url>", "Override the API server URL from the specification")
+    .option("--allow-local", "Allow importing a spec from localhost/private networks")
+    .option("--allow-remote", "Confirm that you trust the remote OpenAPI document")
+    .action(async (source: string, opts: { baseUrl?: string; allowLocal?: boolean; allowRemote?: boolean }) => {
+      const { importOpenApi } = await import("./openapi.js");
+      const imported = await importOpenApi(source, opts);
+      const config = await loadConfig();
+      const existingNames = new Set(config.endpoints.map((endpoint) => endpoint.name));
+      const additions = imported.filter((endpoint) => !existingNames.has(endpoint.name));
+      if (!additions.length) {
+        console.log(`No new endpoints imported. ${imported.length} matching endpoint names already exist.`);
+        return;
+      }
+      config.endpoints.push(...additions);
+      await saveConfig(config);
+      console.log(`Imported ${additions.length} endpoint(s) into ${CONFIG_FILE}:`);
+      for (const endpoint of additions) console.log(`  ${endpoint.method} ${endpoint.url} (${endpoint.name})`);
+      console.log("Review generated request bodies before running tests. Importing does not send requests to the API.");
+    });
+
   program.command("add-endpoint")
     .description("Add an HTTP endpoint to k6boost.json")
     .argument("<name>", "Unique endpoint name")
@@ -44,14 +64,10 @@ if (isInteractive) {
     .option("--body <body>", "Request body (JSON or plain text)")
     .option("--body-type <type>", "Body type: json or text (inferred from Content-Type if not specified)")
     .action(async (name: string, opts: { url?: string; method: string; header?: string[]; body?: string; bodyType?: string }) => {
-      let url = opts.url;
-      if (!url) {
-        throw new Error("URL is required. Use: k6boost add-endpoint <name> --url <url> [options]");
-      }
-      
+      const url = opts.url;
+      if (!url) throw new Error("URL is required. Use: k6boost add-endpoint <name> --url <url> [options]");
       const config = await loadConfig();
       const method = opts.method.toUpperCase();
-      
       const headers: Record<string, string> = {};
       if (opts.header) {
         for (const header of opts.header) {
@@ -63,29 +79,15 @@ if (isInteractive) {
           headers[key] = value;
         }
       }
-      
       let bodyType = opts.bodyType;
-      if (opts.body && !bodyType) {
-        if (headers["Content-Type"]?.includes("application/json") || headers["content-type"]?.includes("application/json")) {
-          bodyType = "json";
-        }
-      }
-      
-      const endpoint = EndpointSchema.parse({
-        name,
-        url,
-        method,
-        headers,
-        body: opts.body,
-        bodyType
-      });
-      
+      if (opts.body && !bodyType && (headers["Content-Type"]?.includes("application/json") || headers["content-type"]?.includes("application/json"))) bodyType = "json";
+      const endpoint = EndpointSchema.parse({ name, url, method, headers, body: opts.body, bodyType });
       if (config.endpoints.some((e) => e.name === endpoint.name)) throw new Error(`Endpoint "${endpoint.name}" already exists.`);
       config.endpoints.push(endpoint);
       await saveConfig(config);
       console.log(`Added ${endpoint.method} ${endpoint.url} as "${endpoint.name}".`);
       if (opts.body) console.log(`  Body (${bodyType ?? "text"}): ${opts.body.length} bytes`);
-      console.log("For authentication, set headers in k6boost.json using values like ${API_TOKEN} as an environment-variable reference.");
+      console.log("For authentication, use environment-variable references such as ${API_TOKEN} in k6boost.json.");
     });
 
   program.command("list-endpoints")
@@ -113,14 +115,8 @@ if (isInteractive) {
     .option("-o, --output <path>", "Write report to this path")
     .action(async (opts: any) => {
       const validProfiles = ["smoke", "load", "stress", "spike", "soak", "breakpoint", "regression", "custom"];
-      if (!validProfiles.includes(opts.profile)) {
-        throw new Error(`Profile must be one of: ${validProfiles.join(", ")}`);
-      }
-      
-      const stages = opts.maxVus && opts.stageDuration 
-        ? generateStages(opts.vus || 1, opts.maxVus, opts.stageDuration)
-        : undefined;
-      
+      if (!validProfiles.includes(opts.profile)) throw new Error(`Profile must be one of: ${validProfiles.join(", ")}`);
+      const stages = opts.maxVus && opts.stageDuration ? generateStages(opts.vus || 1, opts.maxVus, opts.stageDuration) : undefined;
       await runTest(await loadConfig(), {
         profile: opts.profile as Profile,
         allowRemote: Boolean(opts.allowRemote),
@@ -128,7 +124,7 @@ if (isInteractive) {
         vus: opts.vus,
         duration: opts.duration,
         arrivalRate: opts.arrivalRate,
-        stages: stages,
+        stages,
         output: opts.output
       });
     });
@@ -136,12 +132,8 @@ if (isInteractive) {
   function generateStages(start: number, end: number, stageDuration: string): Array<{ duration: string; target: number }> {
     const stages: Array<{ duration: string; target: number }> = [];
     const step = Math.max(1, Math.floor((end - start) / 5));
-    for (let vus = start; vus <= end; vus += step) {
-      stages.push({ duration: stageDuration, target: vus });
-    }
-    if (stages[stages.length - 1]?.target !== end) {
-      stages.push({ duration: stageDuration, target: end });
-    }
+    for (let vus = start; vus <= end; vus += step) stages.push({ duration: stageDuration, target: vus });
+    if (stages[stages.length - 1]?.target !== end) stages.push({ duration: stageDuration, target: end });
     return stages;
   }
 
@@ -165,13 +157,9 @@ if (isInteractive) {
       ] as const;
       console.log("\nMetric\tBaseline\tCurrent\tChange");
       for (const [label, before, after, direction] of rows) {
-        const change = typeof before === "number" && typeof after === "number" && before !== 0
-          ? `${(((after - before) / before) * 100).toFixed(2)}%`
-          : "n/a";
+        const change = typeof before === "number" && typeof after === "number" && before !== 0 ? `${(((after - before) / before) * 100).toFixed(2)}%` : "n/a";
         console.log(`${label}\t${before ?? "n/a"}\t${after ?? "n/a"}\t${change}`);
-        if (direction === "lower" && typeof before === "number" && typeof after === "number" && before > 0) {
-          console.log(`  ${after > before ? "Regression" : after < before ? "Improvement" : "No change"}`);
-        }
+        if (direction === "lower" && typeof before === "number" && typeof after === "number" && before > 0) console.log(`  ${after > before ? "Regression" : after < before ? "Improvement" : "No change"}`);
       }
       console.log(`\nThresholds: baseline ${baseline.thresholdsPassed ? "PASS" : "FAIL"}; current ${current.thresholdsPassed ? "PASS" : "FAIL"}`);
     });
