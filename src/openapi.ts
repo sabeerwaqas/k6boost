@@ -124,7 +124,7 @@ export async function importOpenApi(source: string, options: {
   const endpoints: ImportedEndpoint[] = [];
   const used = new Set<string>();
   for (const [path, rawItem] of Object.entries(root.paths as JsonObject)) {
-    const pathItem = asObject(path && rawItem);
+    const pathItem = asObject(rawItem);
     if (!pathItem) continue;
     for (const method of METHODS) {
       const operation = asObject(pathItem[method.toLowerCase()]);
@@ -132,7 +132,7 @@ export async function importOpenApi(source: string, options: {
       const url = new URL(path.replace(/^\//, ""), base.toString().endsWith("/") ? base : new URL(base.toString() + "/"));
       const endpoint: ImportedEndpoint = {
         name: safeName(method, path, used),
-        url: url.toString(),
+        url: url.toString().replace(/%7B/gi, "{").replace(/%7D/gi, "}"),
         method,
         headers: {}
       };
