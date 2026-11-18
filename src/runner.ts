@@ -228,15 +228,17 @@ export function handleSummary(data) {
  * Create a portable copy of a generated script. Environment-backed header values
  * are written as placeholders so secrets are not persisted in project files.
  */
-function makePortableScript(script: string, configuredEndpoints: Endpoint[]): string {
+export function makePortableScript(script: string, configuredEndpoints: Endpoint[]): string {
   let portable = script;
   for (const endpoint of configuredEndpoints) {
-    for (const value of Object.values(endpoint.headers)) {
+    for (const [key, value] of Object.entries(endpoint.headers)) {
       const match = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value);
-      if (!match) continue;
-      const resolved = process.env[match[1]!];
-      if (resolved !== undefined) {
-        portable = portable.replaceAll(JSON.stringify(resolved), JSON.stringify(value));
+      if (match) {
+        const resolved = process.env[match[1]!];
+        if (resolved !== undefined) portable = portable.replaceAll(JSON.stringify(resolved), JSON.stringify(value));
+      } else if (/(authorization|token|secret|api[-_]?key)/i.test(key)) {
+        // Never persist literal credentials in generated project artifacts.
+        portable = portable.replaceAll(JSON.stringify(value), JSON.stringify("REPLACE_ME"));
       }
     }
   }
