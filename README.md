@@ -195,13 +195,13 @@ Import operations from an OpenAPI/Swagger JSON document instead of adding each e
 
 ```bash
 # Import from a local Spring Boot / springdoc endpoint
-k6boost import-openapi http://localhost:8080/v3/api-docs --allow-local
+k6boost import openapi http://localhost:8080/v3/api-docs --allow-local
 
 # Import from a remote specification you trust
-k6boost import-openapi https://api.example.com/v3/api-docs --allow-remote
+k6boost import openapi https://api.example.com/v3/api-docs --allow-remote
 
 # Override the API server URL declared in the specification
-k6boost import-openapi http://localhost:8080/v3/api-docs --allow-local --base-url http://localhost:8080
+k6boost import openapi http://localhost:8080/v3/api-docs --allow-local --base-url http://localhost:8080
 ```
 
 k6boost imports supported HTTP operations and creates editable JSON sample request bodies from OpenAPI examples, defaults, enums and basic schema types. Review imported endpoints and payloads before running a test. Importing a specification does not execute API requests. JSON specifications are supported initially; YAML and external schema references are not yet supported.
