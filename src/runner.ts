@@ -232,7 +232,7 @@ function makePortableScript(script: string, configuredEndpoints: Endpoint[]): st
   let portable = script;
   for (const endpoint of configuredEndpoints) {
     for (const value of Object.values(endpoint.headers)) {
-      const match = /^\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}$/.exec(value);
+      const match = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value);
       if (!match) continue;
       const resolved = process.env[match[1]!];
       if (resolved !== undefined) {
@@ -242,7 +242,7 @@ function makePortableScript(script: string, configuredEndpoints: Endpoint[]): st
   }
   const resolver = `const resolveHeaders = (headers) => Object.fromEntries(
   Object.entries(headers).map(([key, value]) => {
-    const match = /^\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}$/.exec(value);
+    const match = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value);
     if (!match) return [key, value];
     const resolved = __ENV[match[1]];
     if (resolved === undefined) throw new Error(\`Missing environment variable: \${match[1]}\`);
