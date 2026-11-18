@@ -163,13 +163,13 @@ Failures
 
 ### 4. View the report
 
-Results are automatically saved to `.k6boost/reports/{timestamp}.json`. The generated, inspectable k6 script is saved separately under `.k6boost/scripts/{report-id}.js` with environment-variable placeholders instead of resolved header secrets:
+Results are automatically saved to `.k6boost/reports/{timestamp}.json`. The generated, inspectable k6 script is saved separately under `.k6boost/scripts/{report-id}.js` with environment-variable placeholders instead of resolved header secrets (literal authorization/token/API-key headers are redacted as `REPLACE_ME`):
 
 ```bash
 cat .k6boost/reports/*.json | jq .
 
 # Inspect or run a generated script independently
-k6 run .k6boost/scripts/<report-id>.js -e API_TOKEN="$API_TOKEN"
+k6 run -e API_TOKEN="$API_TOKEN" .k6boost/scripts/<report-id>.js
 ```
 
 ---
@@ -191,7 +191,7 @@ cat .k6boost/reports/*.json | tail -1 | jq .
 
 ## Import endpoints from OpenAPI
 
-Import operations from an OpenAPI/Swagger JSON document instead of adding each endpoint manually:
+Import operations from an OpenAPI 3 JSON document instead of adding each endpoint manually:
 
 ```bash
 # Import from a local Spring Boot / springdoc endpoint
@@ -204,7 +204,7 @@ k6boost import openapi https://api.example.com/v3/api-docs --allow-remote
 k6boost import openapi http://localhost:8080/v3/api-docs --allow-local --base-url http://localhost:8080
 ```
 
-k6boost imports supported HTTP operations and creates editable JSON sample request bodies from OpenAPI examples, defaults, enums and basic schema types. Review imported endpoints and payloads before running a test. Importing a specification does not execute API requests. JSON specifications are supported initially; YAML and external schema references are not yet supported.
+k6boost imports supported HTTP operations and creates editable JSON sample request bodies from OpenAPI examples, defaults, enums and basic schema types. Review imported endpoints and payloads before running a test. Importing a specification does not execute API requests. OpenAPI 3 JSON specifications are supported initially; YAML, Swagger 2 request-body conversion and external schema references are not yet supported.
 
 The importer requires an explicit `--allow-local` or `--allow-remote` confirmation. Only import specifications from sources you trust.
 
