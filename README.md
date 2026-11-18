@@ -163,10 +163,13 @@ Failures
 
 ### 4. View the report
 
-Results are automatically saved to `.k6boost/reports/{timestamp}.json`:
+Results are automatically saved to `.k6boost/reports/{timestamp}.json`. The generated, inspectable k6 script is saved separately under `.k6boost/scripts/{report-id}.js` with environment-variable placeholders instead of resolved header secrets:
 
 ```bash
 cat .k6boost/reports/*.json | jq .
+
+# Inspect or run a generated script independently
+k6 run .k6boost/scripts/<report-id>.js -e API_TOKEN="$API_TOKEN"
 ```
 
 ---
@@ -266,7 +269,7 @@ k6boost test --profile load --allow-remote
 k6boost compare baseline.json current.json
 ```
 
-Reports are stored with timestamps and include workload configuration, metrics, and threshold results.
+Reports are stored with timestamps and include workload configuration, metrics, and threshold results. Generated scripts are preserved as ordinary k6 JavaScript so they can be inspected, edited, versioned, and run without k6boost. Supply referenced environment variables with k6's `-e` option when running an exported script directly.
 
 ---
 
