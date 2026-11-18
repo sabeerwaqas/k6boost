@@ -16,6 +16,7 @@ k6boost removes friction from API performance testing. Forget writing k6 test sc
 - [Features](#features)
 - [Installation](#installation)
 - [Quick start](#quick-start)
+- [Import endpoints from OpenAPI](#import-endpoints-from-openapi)
 - [Supported test profiles](#supported-test-profiles)
 - [Understanding performance metrics](#understanding-performance-metrics)
 - [Reports and historical comparisons](#reports-and-historical-comparisons)
@@ -162,10 +163,13 @@ Failures
 
 ### 4. View the report
 
-Results are automatically saved to `.k6boost/reports/{timestamp}.json`:
+Results are automatically saved to `.k6boost/reports/{timestamp}.json`. The generated, inspectable k6 script is saved separately under `.k6boost/scripts/{report-id}.js` with environment-variable placeholders instead of resolved header secrets (literal authorization/token/API-key headers are redacted as `REPLACE_ME`):
 
 ```bash
 cat .k6boost/reports/*.json | jq .
+
+# Inspect or run a generated script independently
+k6 run -e API_TOKEN="$API_TOKEN" .k6boost/scripts/<report-id>.js
 ```
 
 ---
@@ -184,6 +188,25 @@ k6boost test --profile smoke --allow-remote
 # View the report
 cat .k6boost/reports/*.json | tail -1 | jq .
 ```
+
+## Import endpoints from OpenAPI
+
+Import operations from an OpenAPI 3 JSON document instead of adding each endpoint manually:
+
+```bash
+# Import from a local Spring Boot / springdoc endpoint
+k6boost import openapi http://localhost:8080/v3/api-docs --allow-local
+
+# Import from a remote specification you trust
+k6boost import openapi https://api.example.com/v3/api-docs --allow-remote
+
+# Override the API server URL declared in the specification
+k6boost import openapi http://localhost:8080/v3/api-docs --allow-local --base-url http://localhost:8080
+```
+
+k6boost imports supported HTTP operations and creates editable JSON sample request bodies from OpenAPI examples, defaults, enums and basic schema types. Review imported endpoints and payloads before running a test. Importing a specification does not execute API requests. OpenAPI 3 JSON specifications are supported initially; YAML, Swagger 2 request-body conversion and external schema references are not yet supported.
+
+The importer requires an explicit `--allow-local` or `--allow-remote` confirmation. Only import specifications from sources you trust.
 
 ---
 
@@ -246,7 +269,7 @@ k6boost test --profile load --allow-remote
 k6boost compare baseline.json current.json
 ```
 
-Reports are stored with timestamps and include workload configuration, metrics, and threshold results.
+Reports are stored with timestamps and include workload configuration, metrics, and threshold results. Generated scripts are preserved as ordinary k6 JavaScript so they can be inspected, edited, versioned, and run without k6boost. Supply referenced environment variables with k6's `-e` option when running an exported script directly.
 
 ---
 

@@ -35,6 +35,29 @@ if (isInteractive) {
       console.log(`Created ${CONFIG_FILE}. Add endpoints with "k6boost add-endpoint <name> <url>".`);
     });
 
+  program.command("import").description("Import API definitions")
+    .command("openapi <url>")
+    .description("Import API endpoints from an OpenAPI JSON URL")
+    .option("--base-url <url>", "Override the API server URL from the specification")
+    .option("--allow-local", "Allow importing a spec from localhost/private networks")
+    .option("--allow-remote", "Confirm that you trust the remote OpenAPI document")
+    .action(async (source: string, opts: { baseUrl?: string; allowLocal?: boolean; allowRemote?: boolean }) => {
+      const { importOpenApi } = await import("./openapi.js");
+      const imported = await importOpenApi(source, opts);
+      const config = await loadConfig();
+      const existingNames = new Set(config.endpoints.map((endpoint) => endpoint.name));
+      const additions = imported.filter((endpoint) => !existingNames.has(endpoint.name));
+      if (!additions.length) {
+        console.log(`No new endpoints imported. ${imported.length} matching endpoint names already exist.`);
+        return;
+      }
+      config.endpoints.push(...additions);
+      await saveConfig(config);
+      console.log(`Imported ${additions.length} endpoint(s) into ${CONFIG_FILE}:`);
+      for (const endpoint of additions) console.log(`  ${endpoint.method} ${endpoint.url} (${endpoint.name})`);
+      console.log("Review generated request bodies before running tests. Importing does not send requests to the API.");
+    });
+
   program.command("add-endpoint")
     .description("Add an HTTP endpoint to k6boost.json")
     .argument("<name>", "Unique endpoint name")

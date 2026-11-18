@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { Endpoint, ProjectConfig, Workload } from "./config.js";
 import { resolveHeaders, resolveBody, validateTargets } from "./security.js";
 import { reportFromSummary, saveReport, type RunReport, type RunReportV2 } from "./report.js";
@@ -223,6 +223,40 @@ export function handleSummary(data) {
 `;
 }
 
+
+/**
+ * Create a portable copy of a generated script. Environment-backed header values
+ * are written as placeholders so secrets are not persisted in project files.
+ */
+export function makePortableScript(script: string, configuredEndpoints: Endpoint[]): string {
+  let portable = script;
+  for (const endpoint of configuredEndpoints) {
+    for (const [key, value] of Object.entries(endpoint.headers)) {
+      const match = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value);
+      if (match) {
+        const resolved = process.env[match[1]!];
+        if (resolved !== undefined) portable = portable.replaceAll(JSON.stringify(resolved), JSON.stringify(value));
+      } else if (/(authorization|token|secret|api[-_]?key)/i.test(key)) {
+        // Never persist literal credentials in generated project artifacts.
+        portable = portable.replaceAll(JSON.stringify(value), JSON.stringify("REPLACE_ME"));
+      }
+    }
+  }
+  const resolver = `const resolveHeaders = (headers) => Object.fromEntries(
+  Object.entries(headers).map(([key, value]) => {
+    const match = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value);
+    if (!match) return [key, value];
+    const resolved = __ENV[match[1]];
+    if (resolved === undefined) throw new Error(\`Missing environment variable: \${match[1]}\`);
+    return [key, resolved];
+  })
+);
+`;
+  portable = portable.replace("export default function () {", resolver + "export default function () {");
+  portable = portable.replaceAll("headers: endpoint.headers,", "headers: resolveHeaders(endpoint.headers),");
+  return portable;
+}
+
 export interface RunOptions {
   profile: Profile;
   allowRemote: boolean;
@@ -382,6 +416,12 @@ export async function runTest(config: ProjectConfig, options: RunOptions): Promi
       thresholds
     });
     
+    const scriptsDir = resolve(".k6boost", "scripts");
+    await mkdir(scriptsDir, { recursive: true, mode: 0o700 });
+    const generatedScriptPath = resolve(scriptsDir, `${reportId}.js`);
+    await writeFile(generatedScriptPath, makePortableScript(script, config.endpoints), { encoding: "utf8", mode: 0o600 });
+    console.log(`Generated k6 script saved: ${generatedScriptPath}`);
+
     const path = await saveReport(report, options.output);
     console.log(`\nReport saved: ${path}`);
     
