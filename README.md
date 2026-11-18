@@ -16,6 +16,8 @@ k6boost removes friction from API performance testing. Forget writing k6 test sc
 - [Features](#features)
 - [Installation](#installation)
 - [Quick start](#quick-start)
+- [Importing OpenAPI specs](#importing-openapi-specs)
+- [Inspecting generated k6 scripts](#inspecting-generated-k6-scripts)
 - [Supported test profiles](#supported-test-profiles)
 - [Understanding performance metrics](#understanding-performance-metrics)
 - [Reports and historical comparisons](#reports-and-historical-comparisons)
@@ -186,6 +188,38 @@ cat .k6boost/reports/*.json | tail -1 | jq .
 ```
 
 ---
+
+
+## Importing OpenAPI specs
+
+Import endpoints from an OpenAPI 3.x JSON document instead of entering each one manually. k6boost reads the machine-readable document (not the Swagger UI page), extracts supported HTTP operations, and lets you choose which endpoints to save.
+
+```bash
+k6boost import-openapi https://api.example.com/v3/api-docs
+k6boost import-openapi http://localhost:8080/v3/api-docs --allow-local
+k6boost import-openapi ./openapi.json
+k6boost import-openapi ./openapi.json --base-url http://localhost:8080
+```
+
+For Spring Boot with springdoc-openapi, the JSON document is commonly available at /v3/api-docs. Existing endpoint names are skipped during re-import, so saved headers and edited request bodies are not overwritten.
+
+For supported application/json request bodies, k6boost creates an editable starting payload using OpenAPI examples, defaults, enum values, and schema types. This sample cannot infer business rules, valid database IDs, or stateful prerequisites.
+
+**Safety:** GET, HEAD, and OPTIONS imports are enabled by default. POST, PUT, PATCH, and DELETE imports are saved with enabled=false. Review their payloads and explicitly set enabled=true in k6boost.json before running them. Only test systems you own or are authorized to test.
+
+**Current scope:** OpenAPI 3.x JSON, local JSON files, HTTP(S) JSON URLs, path/query parameters, local schema references, and JSON request bodies. YAML, Swagger 2.0, external schema references, multipart bodies, and full OpenAPI security-scheme translation are not supported yet. Remote imports reject redirects and local/private network targets unless --allow-local is supplied.
+
+## Inspecting generated k6 scripts
+
+Generate a standalone JavaScript script from enabled endpoints:
+
+```bash
+k6boost generate-script
+# Inspect or edit .k6boost/scripts/generated.js
+k6 run .k6boost/scripts/generated.js
+```
+
+The generated file uses ordinary k6 imports and can be inspected, modified, or run without k6boost. Whole-value environment-variable placeholders remain in the file and are resolved by k6 at runtime. Literal header values are copied as configured, so use environment-variable placeholders for secrets. This command generates a standalone smoke-style script using configured p95 and failure-rate thresholds; it does not execute the test.
 
 ## Supported test profiles
 

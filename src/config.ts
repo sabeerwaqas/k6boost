@@ -8,7 +8,8 @@ export const EndpointSchema = z.object({
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]).default("GET"),
   headers: z.record(z.string()).default({}),
   body: z.string().optional(),
-  bodyType: z.enum(["json", "text"]).optional()
+  bodyType: z.enum(["json", "text"]).optional(),
+  enabled: z.boolean().default(true)
 }).refine((data) => {
   // Validate that bodyType and body are consistent
   if (data.body && data.bodyType === "json") {

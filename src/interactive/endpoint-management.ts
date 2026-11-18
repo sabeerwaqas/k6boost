@@ -14,6 +14,7 @@ export async function viewEndpoints(config: ProjectConfig): Promise<void> {
   config.endpoints.forEach((ep, i) => {
     console.log(`\n  ${i + 1}. ${ep.name}`);
     console.log(`     Method: ${ep.method}`);
+    console.log(`     Enabled: ${ep.enabled ? "yes" : "no"}`);
     console.log(`     URL:    ${ep.url}`);
 
     if (Object.keys(ep.headers).length > 0) {

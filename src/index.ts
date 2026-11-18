@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { access } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { checkbox } from "@inquirer/prompts";
+import { importOpenApi } from "./openapi.js";
+import { generateK6Script } from "./script.js";
 import { loadConfig, saveConfig, defaultConfig, CONFIG_FILE, EndpointSchema } from "./config.js";
 import { readReport } from "./report.js";
 import { runTest } from "./runner.js";
@@ -93,10 +97,10 @@ if (isInteractive) {
     .action(async () => {
       const config = await loadConfig();
       if (!config.endpoints.length) return console.log("No endpoints configured.");
-      console.log("Name\tMethod\tURL\tBody");
+      console.log("Name\tMethod\tEnabled\tURL\tBody");
       for (const e of config.endpoints) {
         const bodyInfo = e.body ? `${e.bodyType ?? "text"} (${e.body.length}B)` : "-";
-        console.log(`${e.name}\t${e.method}\t${e.url}\t${bodyInfo}`);
+        console.log(`${e.name}\t${e.method}\t${e.enabled ? "yes" : "no"}\t${e.url}\t${bodyInfo}`);
       }
     });
 
@@ -174,6 +178,55 @@ if (isInteractive) {
         }
       }
       console.log(`\nThresholds: baseline ${baseline.thresholdsPassed ? "PASS" : "FAIL"}; current ${current.thresholdsPassed ? "PASS" : "FAIL"}`);
+    });
+
+
+  program.command("import-openapi")
+    .description("Import API endpoints from an OpenAPI 3.x JSON document")
+    .argument("<source>", "OpenAPI JSON file path or HTTP(S) URL")
+    .option("--base-url <url>", "Override the first OpenAPI server URL")
+    .option("--allow-local", "Allow importing a spec from localhost or a private network")
+    .option("--all", "Import every supported operation without the selection prompt")
+    .action(async (source: string, opts: { baseUrl?: string; allowLocal?: boolean; all?: boolean }) => {
+      const config = await loadConfig();
+      const discovered = await importOpenApi(source, { baseUrl: opts.baseUrl, allowLocal: opts.allowLocal });
+      const choices = discovered.map((endpoint) => ({
+        name: `${endpoint.method.padEnd(7)} ${endpoint.url}${endpoint.body ? "  [sample JSON body]" : ""}${endpoint.enabled ? "" : "  [disabled by default]"}`,
+        value: endpoint.name,
+        checked: endpoint.enabled
+      }));
+      const selectedNames = opts.all ? discovered.map((endpoint) => endpoint.name) : await checkbox({
+        message: "Select endpoints to import (write operations remain disabled until enabled in k6boost.json):",
+        choices
+      });
+      if (!selectedNames.length) {
+        console.log("No endpoints selected; configuration was not changed.");
+        return;
+      }
+      const selected = discovered.filter((endpoint) => selectedNames.includes(endpoint.name));
+      const existing = new Set(config.endpoints.map((endpoint) => endpoint.name));
+      const added = selected.filter((endpoint) => !existing.has(endpoint.name));
+      const skipped = selected.filter((endpoint) => existing.has(endpoint.name));
+      config.endpoints.push(...added);
+      if (added.length) await saveConfig(config);
+      console.log(`Imported ${added.length} endpoint(s) from OpenAPI.`);
+      if (skipped.length) console.log(`Skipped ${skipped.length} existing endpoint(s); their saved configuration and edited payloads were preserved.`);
+      const writeCount = added.filter((endpoint) => !endpoint.enabled).length;
+      if (writeCount) console.log(`${writeCount} write operation(s) were imported disabled. Set "enabled": true for an endpoint in k6boost.json only when you intend to send those requests.`);
+      console.log("Sample JSON bodies are starting points, not proof of business-valid data. Review them before testing.");
+    });
+
+  program.command("generate-script")
+    .description("Write an inspectable standalone k6 JavaScript script from enabled endpoints")
+    .option("-o, --output <path>", "Output file", ".k6boost/scripts/generated.js")
+    .action(async (opts: { output: string }) => {
+      const config = await loadConfig();
+      const script = generateK6Script(config.endpoints, config.thresholds);
+      await mkdir(dirname(opts.output), { recursive: true });
+      await writeFile(opts.output, script, { encoding: "utf8", mode: 0o600 });
+      console.log(`Generated standalone k6 script: ${opts.output}`);
+      console.log("Inspect or edit the file, then run it independently with: k6 run " + opts.output);
+      console.log("Use whole-value ${VAR_NAME} placeholders for secrets; literal header values are copied into the generated script as configured.");
     });
 
   program.showHelpAfterError();

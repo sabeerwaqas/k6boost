@@ -238,6 +238,8 @@ export interface RunOptions {
 
 export async function runTest(config: ProjectConfig, options: RunOptions): Promise<{ report: RunReportV2; path: string }> {
   if (!config.endpoints.length) throw new Error('No endpoints configured. Add one with "k6boost add-endpoint <name> <url>".');
+  const selectedEndpoints = config.endpoints.filter((endpoint) => endpoint.enabled);
+  if (!selectedEndpoints.length) throw new Error("No enabled endpoints. Enable at least one endpoint in k6boost.json before running a test.");
   
   const profileMeta = PROFILE_METADATA[options.profile];
   
@@ -306,10 +308,10 @@ export async function runTest(config: ProjectConfig, options: RunOptions): Promi
   }
   
   // Validate target authorization
-  validateTargets(config.endpoints, options.allowRemote, options.allowLocal);
+  validateTargets(selectedEndpoints, options.allowRemote, options.allowLocal);
   
   // Resolve headers and validate bodies
-  const endpoints = config.endpoints.map((e) => ({
+  const endpoints = selectedEndpoints.map((e) => ({
     ...e,
     headers: resolveHeaders(e.headers, e.name),
     body: resolveBody(e.body, e.bodyType, e.name)
@@ -360,7 +362,7 @@ export async function runTest(config: ProjectConfig, options: RunOptions): Promi
       throw new Error(`k6 did not produce a readable summary (exit code ${code}). Check the k6 output above.`);
     }
     
-    const hosts = [...new Set(config.endpoints.map((e) => new URL(e.url).host))];
+    const hosts = [...new Set(selectedEndpoints.map((e) => new URL(e.url).host))];
     // K6-003 FIX: Add random suffix to report ID to prevent collisions
     // when multiple tests start within the same millisecond
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
