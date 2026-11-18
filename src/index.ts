@@ -32,9 +32,9 @@ if (isInteractive) {
       console.log(`Created ${CONFIG_FILE}. Add endpoints with "k6boost add-endpoint <name> <url>".`);
     });
 
-  program.command("import-openapi")
+  program.command("import").description("Import API definitions")
+    .command("openapi <url>")
     .description("Import API endpoints from an OpenAPI JSON URL")
-    .argument("<url>", "URL of an OpenAPI/Swagger JSON document")
     .option("--base-url <url>", "Override the API server URL from the specification")
     .option("--allow-local", "Allow importing a spec from localhost/private networks")
     .option("--allow-remote", "Confirm that you trust the remote OpenAPI document")
